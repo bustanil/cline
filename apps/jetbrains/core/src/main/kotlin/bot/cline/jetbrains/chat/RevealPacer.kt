@@ -9,15 +9,15 @@ package bot.cline.jetbrains.chat
  * lets a little more out on every tick, until it is whole.
  *
  * A row that is already on screen the first time a conversation is drawn (history, a reopened task) is shown
- * whole, so reopening a chat does not replay it. Each row keeps its own pace, set from its length, so a long
- * answer clears in a few seconds instead of hanging on its last line.
+ * whole, so reopening a chat does not replay it. Each row is spread over a set number of steps, taken from its
+ * length, so a short answer still takes about a second and a half and a long one is done in under six.
  */
-class RevealPacer(private val baseStep: Int = 4) {
-    /** How much of each row is shown, in characters, word-aligned. A key missing here has not been drawn yet. */
-    private val shown = HashMap<Long, Int>()
+class RevealPacer(private val baseStep: Int = 2) {
+    /** The steps taken so far for each row that is being revealed. A row missing here has not been drawn yet. */
+    private val taken = HashMap<Long, Int>()
 
-    /** The full length of each row that is not shown in full yet. */
-    private val lengths = HashMap<Long, Int>()
+    /** How many steps each row is spread over. Zero means the row is shown whole. */
+    private val total = HashMap<Long, Int>()
 
     /** The first row of the conversation now drawn, to tell a conversation that is already there from a new one. */
     private var conversation: Long? = null
@@ -31,11 +31,11 @@ class RevealPacer(private val baseStep: Int = 4) {
         val first = items.firstOrNull()?.key
         if (first != conversation) {
             conversation = first
-            shown.clear()
-            lengths.clear()
+            taken.clear()
+            total.clear()
             revealing = false
             // Nothing new is arriving: this is the chat as it was, so draw all of it.
-            for (item in items) if (item is TranscriptItem.Single && paced(item.message)) shown[item.key] = item.message.text().length
+            for (item in items) if (item is TranscriptItem.Single && paced(item.message)) showWhole(item.key)
             return items
         }
         var out: ArrayList<TranscriptItem>? = null
@@ -43,11 +43,10 @@ class RevealPacer(private val baseStep: Int = 4) {
         for ((i, item) in items.withIndex()) {
             if (item !is TranscriptItem.Single || !paced(item.message)) continue
             val text = item.message.text()
-            val n = shown[item.key] ?: 0
-            if (n >= text.length) continue
-            val end = wordEnd(text, n)
-            shown[item.key] = end
-            lengths[item.key] = text.length
+            val steps = total.getOrPut(item.key) { stepsFor(text.length) }
+            val done = taken.getOrPut(item.key) { 1 }
+            if (done >= steps) continue
+            val end = wordEnd(text, text.length * done / steps)
             revealing = true
             if (out == null) out = ArrayList(items)
             out[i] = TranscriptItem.Single(item.message.withText(text.substring(0, end)))
@@ -55,17 +54,21 @@ class RevealPacer(private val baseStep: Int = 4) {
         return out ?: items
     }
 
-    /** Shows a little more of each row that is still being revealed. */
+    /** Shows the next step of each row that is still being revealed. */
     fun advance() {
         var left = false
-        for ((key, length) in lengths) {
-            val n = shown[key] ?: continue
-            if (n >= length) continue
-            val next = minOf(length, n + paceFor(length))
-            shown[key] = next
-            if (next < length) left = true
+        for ((key, steps) in total) {
+            val done = taken[key] ?: continue
+            if (done >= steps) continue
+            taken[key] = done + 1
+            if (done + 1 < steps) left = true
         }
         revealing = left
+    }
+
+    private fun showWhole(key: Long) {
+        total[key] = 0
+        taken[key] = 0
     }
 
     private fun paced(message: ChatMessage) = message.isSay("text") || message.isSay("completion_result")
@@ -78,22 +81,19 @@ class RevealPacer(private val baseStep: Int = 4) {
     }
 
     /**
-     * How many characters one step adds to a row of [length] characters. About [CHARS_PER_STEP] per step for a
-     * short answer, spread thinner over a long one so the whole answer clears within [MAX_STEPS] steps.
+     * How many steps a row of [length] characters is spread over. About [CHARS_PER_STEP] characters a step for a
+     * short answer, and never more than [MAX_STEPS] so a long one still finishes.
      */
-    private fun paceFor(length: Int): Int {
-        val steps = (length / CHARS_PER_STEP).coerceIn(MIN_STEPS, MAX_STEPS)
-        return maxOf(baseStep, (length + steps - 1) / steps)
-    }
+    private fun stepsFor(length: Int): Int = (length / CHARS_PER_STEP).coerceIn(MIN_STEPS, MAX_STEPS)
 
     private companion object {
-        /** Characters revealed per step when the answer is short enough for the pace to follow it. */
-        const val CHARS_PER_STEP = 8
+        /** Characters revealed per step when the answer is short enough for the pace to follow it: about 50 a second. */
+        const val CHARS_PER_STEP = 3
 
-        /** Fewer steps than this would show a short answer almost at once. */
-        const val MIN_STEPS = 8
+        /** At 60 ms a step, a second and a half, so even a one-line answer is seen to arrive. */
+        const val MIN_STEPS = 25
 
-        /** More steps than this would drag a long answer out; at 60 ms a step that is under five seconds. */
-        const val MAX_STEPS = 80
+        /** At 60 ms a step, under six seconds, so a long answer does not drag. */
+        const val MAX_STEPS = 90
     }
 }

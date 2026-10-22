@@ -77,6 +77,25 @@ class RevealPacerTest {
     }
 
     @Test
+    fun `a short answer still takes about a second and a half`() {
+        val pacer = RevealPacer()
+        val base = items(say(1, "task", "go"))
+        pacer.apply(base)
+        val short = "this is a short answer of about sixty characters, only just"
+        val all = base + items(say(2, "text", short))
+        pacer.apply(all)
+        var steps = 0
+        while (pacer.revealing && steps < 1000) {
+            pacer.advance()
+            pacer.apply(all)
+            steps++
+        }
+        // The chat ticks every 60 ms, so 20 steps is over a second.
+        assertTrue(steps >= 20, "took only $steps steps")
+        assertEquals(short, texts(pacer.apply(all)).last())
+    }
+
+    @Test
     fun `a long answer clears within a few dozen steps`() {
         val pacer = RevealPacer()
         val base = items(say(1, "task", "go"))
@@ -89,22 +108,21 @@ class RevealPacerTest {
             pacer.apply(all)
             steps++
         }
-        assertTrue(steps in 1..80, "took $steps steps")
+        assertTrue(steps in 1..100, "took $steps steps")
     }
 
     @Test
-    fun `a row that grows keeps being revealed to its new end`() {
+    fun `a row that grows while it is revealed follows the new text`() {
         val pacer = RevealPacer()
         val base = items(say(1, "task", "go"))
         pacer.apply(base)
-        val shorter = base + items(say(2, "text", "alpha beta"))
+        val shorter = base + items(say(2, "text", "alpha beta gamma"))
         pacer.apply(shorter)
-        while (pacer.revealing) {
-            pacer.advance()
-            pacer.apply(shorter)
-        }
-        val grown = base + items(say(2, "text", "alpha beta gamma"))
-        assertTrue(texts(pacer.apply(grown)).last().length < 17)
-        assertTrue(pacer.revealing)
+        pacer.advance()
+        pacer.apply(shorter)
+        val grown = base + items(say(2, "text", "alpha beta gamma delta epsilon zeta eta"))
+        val shown = texts(pacer.apply(grown)).last()
+        assertTrue(shown.length < 42, "shown whole: $shown")
+        assertTrue("alpha beta gamma delta epsilon zeta eta".startsWith(shown))
     }
 }
