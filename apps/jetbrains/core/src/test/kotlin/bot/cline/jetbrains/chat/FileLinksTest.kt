@@ -104,6 +104,16 @@ class MarkdownHtmlTest {
     }
 
     @Test
+    fun `a picture written as a file path is drawn from a file url`() {
+        val picture = java.io.File.createTempFile("cline-chart", ".png").apply { deleteOnExit() }
+        val html = MarkdownHtml.render("![a chart](${picture.path})")
+        assertTrue(html.contains("src=\"file:${picture.toURI().path}"), html)
+
+        val missing = MarkdownHtml.render("![gone](/no/such/chart.png)")
+        assertTrue(missing.contains("/no/such/chart.png"), missing)
+    }
+
+    @Test
     fun `a br in code stays code`() {
         val html = MarkdownHtml.render("`<br>`\n\n```\n<br>\n```")
         assertFalse(html.contains("<br>"), html)

@@ -11,6 +11,7 @@ import org.commonmark.node.AbstractVisitor
 import org.commonmark.renderer.html.AttributeProvider
 import org.commonmark.node.Code
 import org.commonmark.node.HtmlInline
+import org.commonmark.node.Image
 import org.commonmark.node.Node
 import org.commonmark.parser.Parser
 import org.commonmark.renderer.html.DefaultUrlSanitizer
@@ -65,6 +66,7 @@ object MarkdownHtml {
         val document = parser.parse(markdown)
         if (links.isNotEmpty()) wrapLinkedCode(document, links)
         lineBreaks(document)
+        imageSources(document)
         // Raw HTML in a model's reply is shown as text, not drawn.
         val builder = HtmlRenderer.builder().extensions(extensions).escapeHtml(true)
         if (codeStyle != null) {
@@ -73,7 +75,7 @@ object MarkdownHtml {
         }
         val html = builder
             .sanitizeUrls(true)
-            .urlSanitizer(DefaultUrlSanitizer(listOf("http", "https", "mailto", FILE_SCHEME.removeSuffix(":"))))
+            .urlSanitizer(DefaultUrlSanitizer(listOf("http", "https", "mailto", "file", FILE_SCHEME.removeSuffix(":"))))
             .build().render(document)
         return (if (codeStyle != null) wrapTables(html, codeStyle) else html).replace(BREAK_MARK, "<br>")
     }
@@ -83,6 +85,24 @@ object MarkdownHtml {
      * cell, which Swing's HTML cannot do any other way. Raw HTML is escaped, so the break is marked here and put
      * back once the reply is rendered.
      */
+    /**
+     * A picture written as a path — what the agent does for a file it just made — becomes a `file:` URL, which is
+     * the only form Swing's HTML pane loads. A path that is not there is left alone, so the alt text still shows.
+     */
+    private fun imageSources(document: Node) {
+        document.accept(object : AbstractVisitor() {
+            override fun visit(image: Image) {
+                val destination = image.destination ?: return
+                if (!destination.startsWith("/") && !DRIVE.containsMatchIn(destination)) return
+                val file = java.io.File(destination)
+                if (file.isFile) image.destination = file.toURI().toString()
+            }
+        })
+    }
+
+    /** A Windows path, which starts with a drive instead of a slash. */
+    private val DRIVE = Regex("^[A-Za-z]:[\\\\/]")
+
     private fun lineBreaks(document: Node) {
         document.accept(object : AbstractVisitor() {
             override fun visit(htmlInline: HtmlInline) {
@@ -159,6 +179,7 @@ object MarkdownHtml {
         val document = parser.parse(markdown)
         if (links.isNotEmpty()) wrapLinkedCode(document, links)
         lineBreaks(document)
+        imageSources(document)
         val widths = columnWidths(document)
         val text = baseBuilder().build()
         val tables = baseBuilder().attributeProviderFactory {
@@ -191,7 +212,7 @@ object MarkdownHtml {
 
     private fun baseBuilder(): HtmlRenderer.Builder = HtmlRenderer.builder().extensions(extensions).escapeHtml(true)
         .sanitizeUrls(true)
-        .urlSanitizer(DefaultUrlSanitizer(listOf("http", "https", "mailto", FILE_SCHEME.removeSuffix(":"))))
+        .urlSanitizer(DefaultUrlSanitizer(listOf("http", "https", "mailto", "file", FILE_SCHEME.removeSuffix(":"))))
 
     private fun codeBlock(language: String?, literal: String, style: CodeBlockStyle?): Block {
         val code = literal.trimEnd('\n')
