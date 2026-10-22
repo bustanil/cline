@@ -64,34 +64,118 @@ class CardPanel(private val fill: Color, private val line: Color, private val ar
     }
 }
 
-/** A flat button drawn as a circle or a rounded rectangle, with its own fill. */
-class PillButton(text: String, private val fill: () -> Color, private val round: Boolean = false, private val textColor: () -> Color = { UIUtil.getLabelForeground() }) : JButton(text) {
+/**
+ * A flat button drawn as a circle or a rounded rectangle, with its own fill. It is not a `JButton`: the IDE's
+ * button UI gives every `JButton` a minimum size and padding, which turned small round buttons into big discs.
+ */
+class PillButton(text: String, private val fill: () -> Color, private val round: Boolean = false, private val textColor: () -> Color = { UIUtil.getLabelForeground() }) : JComponent() {
+    private val listeners = mutableListOf<java.awt.event.ActionListener>()
+    private var pressed = false
+    private var hover = false
+
+    var text: String = text
+        set(value) {
+            field = value
+            revalidate()
+            repaint()
+        }
+
     init {
-        isContentAreaFilled = false
-        isBorderPainted = false
-        isFocusPainted = false
         isOpaque = false
+        isFocusable = false
         cursor = Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)
-        border = JBUI.Borders.empty(4, 10)
+        font = JBUI.Fonts.label()
+        addMouseListener(object : MouseAdapter() {
+            override fun mousePressed(e: MouseEvent) { pressed = true; repaint() }
+            override fun mouseReleased(e: MouseEvent) {
+                val inside = contains(e.point)
+                pressed = false
+                repaint()
+                if (inside && isEnabled) doClick()
+            }
+            override fun mouseEntered(e: MouseEvent) { hover = true; repaint() }
+            override fun mouseExited(e: MouseEvent) { hover = false; pressed = false; repaint() }
+        })
+    }
+
+    fun addActionListener(l: java.awt.event.ActionListener) {
+        listeners += l
+    }
+
+    fun addActionListener(l: () -> Unit) {
+        listeners += java.awt.event.ActionListener { l() }
+    }
+
+    fun doClick() {
+        if (!isEnabled) return
+        val event = java.awt.event.ActionEvent(this, java.awt.event.ActionEvent.ACTION_PERFORMED, text)
+        listeners.toList().forEach { it.actionPerformed(event) }
+    }
+
+    override fun getPreferredSize(): Dimension {
+        if (round) return Dimension(JBUI.scale(30), JBUI.scale(30))
+        val metrics = getFontMetrics(font)
+        return Dimension(metrics.stringWidth(text) + JBUI.scale(24), maxOf(metrics.height + JBUI.scale(10), JBUI.scale(28)))
+    }
+
+    /** A chip may be squeezed in a narrow window; its text then ends in an ellipsis. */
+    override fun getMinimumSize(): Dimension = if (round) preferredSize else Dimension(JBUI.scale(60), preferredSize.height)
+
+    override fun getMaximumSize(): Dimension = preferredSize
+
+    private fun shade(c: Color, factor: Double) = if (factor == 1.0) c else Color((c.red * factor).toInt(), (c.green * factor).toInt(), (c.blue * factor).toInt(), c.alpha)
+
+    private fun fit(text: String, metrics: java.awt.FontMetrics, available: Int): String {
+        if (metrics.stringWidth(text) <= available) return text
+        var end = text.length
+        while (end > 1 && metrics.stringWidth(text.substring(0, end) + "…") > available) end--
+        return text.substring(0, end).trimEnd() + "…"
     }
 
     override fun paintComponent(g: Graphics) {
         val g2 = g.create() as Graphics2D
         try {
             g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON)
-            g2.color = fill()
+            g2.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON)
+            g2.color = shade(fill(), if (!isEnabled) 1.0 else if (pressed) 0.9 else if (hover) 0.96 else 1.0)
             val arc = if (round) minOf(width, height) else JBUI.scale(12)
             g2.fillRoundRect(0, 0, width, height, arc, arc)
+            g2.font = font
+            g2.color = if (isEnabled) textColor() else UIUtil.getContextHelpForeground()
+            val metrics = g2.fontMetrics
+            val shown = fit(text, metrics, width - JBUI.scale(16))
+            g2.drawString(shown, (width - metrics.stringWidth(shown)) / 2, (height - metrics.height) / 2 + metrics.ascent)
         } finally {
             g2.dispose()
         }
-        foreground = textColor()
-        super.paintComponent(g)
+    }
+}
+
+/** Puts its one child at the right edge, at its preferred width, or narrower when there is not room. */
+class ShrinkRightLayout : java.awt.LayoutManager {
+    override fun addLayoutComponent(name: String?, comp: java.awt.Component?) {}
+
+    override fun removeLayoutComponent(comp: java.awt.Component?) {}
+
+    override fun layoutContainer(parent: java.awt.Container) {
+        val child = parent.components.firstOrNull() ?: return
+        val insets = parent.insets
+        val available = (parent.width - insets.left - insets.right).coerceAtLeast(0)
+        val width = minOf(child.preferredSize.width, available)
+        val height = child.preferredSize.height
+        child.setBounds(insets.left + available - width, insets.top + ((parent.height - insets.top - insets.bottom - height) / 2).coerceAtLeast(0), width, height)
     }
 
-    override fun getPreferredSize(): Dimension {
-        val d = super.getPreferredSize()
-        return if (round) Dimension(maxOf(d.width, d.height), maxOf(d.width, d.height)) else d
+    override fun preferredLayoutSize(parent: java.awt.Container): Dimension {
+        val child = parent.components.firstOrNull() ?: return Dimension()
+        val insets = parent.insets
+        return Dimension(child.preferredSize.width + insets.left + insets.right, child.preferredSize.height + insets.top + insets.bottom)
+    }
+
+    override fun minimumLayoutSize(parent: java.awt.Container): Dimension {
+        val child = parent.components.firstOrNull() ?: return Dimension()
+        val insets = parent.insets
+        return Dimension(child.minimumSize.width + insets.left + insets.right, child.minimumSize.height + insets.top + insets.bottom)
     }
 }
 
@@ -169,12 +253,14 @@ class Composer(
         lineWrap = true
         wrapStyleWord = true
         isOpaque = false
+        // A text area takes the editor's monospaced font from the IDE; the chat uses the UI font.
+        font = JBUI.Fonts.label().deriveFont(JBUI.Fonts.label().size2D + 1f)
         border = JBUI.Borders.empty(8, 12, 4, 12)
         emptyText.text = "Message or run a task, @ for files"
     }
     private val strip = AttachmentStrip(attachments) { updateSend() }
     private val plus = PillButton("+", { ChatColors.bubble }, round = true).apply {
-        font = font.deriveFont(java.awt.Font.BOLD, JBUI.scale(16).toFloat())
+        font = JBUI.Fonts.label().deriveFont(java.awt.Font.BOLD, JBUI.Fonts.label().size2D + 3f)
         toolTipText = "Attach images or files"
         addActionListener { attach() }
     }
@@ -183,7 +269,7 @@ class Composer(
         addActionListener { showModelPopup() }
     }
     private val send = PillButton("↑", { if (isSendReady()) JBColor(0x6B8DF0, 0x5B7FEA) else JBColor(0xBFCCF7, 0x3C4A78) }, round = true, textColor = { Color.WHITE }).apply {
-        font = font.deriveFont(java.awt.Font.BOLD, JBUI.scale(15).toFloat())
+        font = JBUI.Fonts.label().deriveFont(java.awt.Font.BOLD, JBUI.Fonts.label().size2D + 2f)
         toolTipText = "Send"
         addActionListener { submit() }
     }
@@ -203,7 +289,9 @@ class Composer(
             isOpaque = false
             border = JBUI.Borders.empty(2, 8, 8, 8)
             add(plus, BorderLayout.WEST)
-            add(JPanel(FlowLayout(FlowLayout.RIGHT, 6, 0)).apply { isOpaque = false; add(chip); add(send) }, BorderLayout.EAST)
+            add(send, BorderLayout.EAST)
+            // The chip can shrink, so in a narrow window it loses its text before the buttons lose their room.
+            add(JPanel(ShrinkRightLayout()).apply { isOpaque = false; border = JBUI.Borders.empty(0, 8); add(chip) }, BorderLayout.CENTER)
         }
         val card = CardPanel(ChatColors.card, ChatColors.border).apply {
             add(strip, BorderLayout.NORTH)
@@ -380,6 +468,8 @@ class Composer(
     internal fun strip(): AttachmentStrip = strip
 
     internal fun submitForTest() = submit()
+
+    internal fun sendButton(): PillButton = send
 
     internal val sendEnabled: Boolean get() = send.isEnabled
 

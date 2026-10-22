@@ -43,7 +43,7 @@ class ChatPanelTest : BasePlatformTestCase() {
         UIUtil.dispatchAllInvocationEvents()
         val labels = panel.all(JLabel::class.java).map { it.text.orEmpty() }
         assertTrue(labels.toString(), labels.any { it.contains("cline-core.js was not found") })
-        assertFalse(panel.all(JButton::class.java).first { it.text == "↑" }.isEnabled)
+        assertFalse(panel.all(PillButton::class.java).first { it.text == "↑" }.isEnabled)
         panel.dispose()
     }
 

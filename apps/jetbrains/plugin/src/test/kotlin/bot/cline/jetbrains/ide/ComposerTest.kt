@@ -127,6 +127,41 @@ class ComposerTest : BasePlatformTestCase() {
         assertTrue(sent.isEmpty())
     }
 
+    fun `test the buttons keep a small fixed size whatever the IDE button style says`() {
+        val c = composer()
+        val plus = c.findPlus()
+        val size = plus.preferredSize
+        assertTrue("plus is ${size}", size.width <= 40 && size.height <= 40 && size.width == size.height)
+        val send = c.sendButton()
+        assertEquals(size, send.preferredSize)
+        assertTrue(c.chip.minimumSize.width < c.chip.preferredSize.width)
+    }
+
+    fun `test the popup fits inside the tool window`() {
+        assertEquals(com.intellij.util.ui.JBUI.scale(340), ModelPopup.widthFor(com.intellij.util.ui.JBUI.scale(356)))
+        assertEquals(com.intellij.util.ui.JBUI.scale(240), ModelPopup.widthFor(com.intellij.util.ui.JBUI.scale(200)))
+        assertEquals(com.intellij.util.ui.JBUI.scale(420), ModelPopup.widthFor(com.intellij.util.ui.JBUI.scale(900)))
+    }
+
+    fun `test a narrow chip is squeezed with an ellipsis and never overlaps the plus`() {
+        val layout = ShrinkRightLayout()
+        val parent = javax.swing.JPanel(layout)
+        val chip = PillButton("DeepSeek-V4.1-Flash  1M  High  ⌃", { java.awt.Color.LIGHT_GRAY })
+        parent.add(chip)
+        parent.setSize(120, 40)
+        layout.layoutContainer(parent)
+        assertTrue("fits: ${chip.bounds}", chip.x >= 0 && chip.x + chip.width <= 120 && chip.width in 60..120)
+        parent.setSize(600, 40)
+        layout.layoutContainer(parent)
+        assertEquals(chip.preferredSize.width, chip.width)
+        assertEquals(600, chip.x + chip.width)
+    }
+
+    fun `test the text box uses the UI font not the editor font`() {
+        val c = composer()
+        assertFalse("monospaced: ${c.input.font}", c.input.font.family.contains("Mono", ignoreCase = true) || c.input.font.family.equals("Monospaced"))
+    }
+
     fun `test snapshot of the composer`() {
         val store = bot.cline.jetbrains.chat.ChatStore(object : bot.cline.jetbrains.bridge.CoreApi {
             override fun call(service: String, method: String, messageJson: String) = java.util.concurrent.CompletableFuture.completedFuture(
@@ -150,6 +185,7 @@ class ComposerTest : BasePlatformTestCase() {
             full.input.text = "Explain what this screenshot shows and check it against the spec"
             full.addFiles(listOf(file("screenshot-2026-10-22.png", png(40, 30)), file("payments-spec.pdf"), file("run.exe")))
             Snapshots.save(full, "composer-attached", 760)
+            Snapshots.save(empty, "composer-narrow", 330)
         } finally {
             ClineSettings.getInstance().state.efforts.clear()
         }
@@ -171,7 +207,7 @@ class ComposerTest : BasePlatformTestCase() {
         Snapshots.save(panel, "prompt-attachments", 760)
     }
 
-    private fun Composer.findPlus(): javax.swing.JButton {
+    private fun Composer.findPlus(): PillButton {
         fun walk(c: java.awt.Component): List<java.awt.Component> = listOf(c) + ((c as? java.awt.Container)?.components?.flatMap(::walk) ?: emptyList())
         return walk(this).filterIsInstance<PillButton>().first { it.text == "+" }
     }

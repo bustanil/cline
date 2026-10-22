@@ -50,6 +50,8 @@ class ModelPopupPanel(
     private val onKeyRequested: () -> Unit = {},
     private val remembered: (String) -> String? = { ClineSettings.getInstance().effortFor(it) },
     private val remember: (String, String) -> Unit = { provider, effort -> ClineSettings.getInstance().rememberEffort(provider, effort) },
+    /** The width in pixels, so the popup fits inside the tool window. */
+    private val popupWidth: Int = JBUI.scale(340),
 ) : JPanel(BorderLayout()) {
     private val mode = store.mode
     private val providerBox = ComboBox<ProviderOption>().apply {
@@ -104,7 +106,7 @@ class ModelPopupPanel(
     private val note = JBLabel().apply { foreground = UIUtil.getContextHelpForeground(); border = JBUI.Borders.empty(2, 12) }
 
     /** A fixed width, and the height the open sections need. */
-    override fun getPreferredSize(): Dimension = super.getPreferredSize().also { it.width = JBUI.scale(380) }
+    override fun getPreferredSize(): Dimension = super.getPreferredSize().also { it.width = popupWidth }
 
     private var providers: List<ProviderOption> = emptyList()
     private var allModels: List<ModelOption> = emptyList()
@@ -268,11 +270,16 @@ internal object SwingUtilitiesAncestor {
 }
 
 object ModelPopup {
+    /** As wide as the composer it opens from, less a small margin, but not narrower than 240 or wider than 420 (logical pixels). */
+    fun widthFor(composerWidth: Int): Int = (composerWidth - JBUI.scale(16)).coerceIn(JBUI.scale(240), JBUI.scale(420))
+
     /** Opens the popup above [anchor]. [onChanged] runs after a model or an effort was chosen. */
     fun show(project: Project, store: ChatStore, anchor: JComponent, onChanged: () -> Unit): JBPopup {
         lateinit var popup: JBPopup
+        val composer = javax.swing.SwingUtilities.getAncestorOfClass(Composer::class.java, anchor) as? JComponent
         val panel = ModelPopupPanel(
             store,
+            popupWidth = widthFor(composer?.width ?: anchor.width * 3),
             onChosen = { popup.cancel(); onChanged() },
             onKeyRequested = {
                 popup.cancel()
@@ -288,7 +295,9 @@ object ModelPopup {
             .setRequestFocus(true).setFocusable(true).setCancelOnClickOutside(true).setResizable(false).setMovable(false)
             .createPopup()
         val size = panel.preferredSize
-        popup.show(RelativePoint(anchor, Point(anchor.width - size.width, -size.height - JBUI.scale(6))))
+        // Line up with the composer's left edge so the popup stays over the tool window, not the editor.
+        val left = composer?.let { javax.swing.SwingUtilities.convertPoint(it, JBUI.scale(8), 0, anchor).x } ?: (anchor.width - size.width)
+        popup.show(RelativePoint(anchor, Point(left, -size.height - JBUI.scale(6))))
         return popup
     }
 }
