@@ -67,7 +67,108 @@ class ChatPanelTest : BasePlatformTestCase() {
         println("ROWS: " + rows.map { it.replace(Regex("<[^>]+>"), " ").replace(Regex("\\s+"), " ").trim().take(60) })
         assertTrue(rows.toString(), rows.any { it.contains("Task") && it.contains("say hello") })
         assertTrue("the failure should show as an error row: $rows", rows.any { it.contains("Error") })
+        // The toolbar follows the core: Plan/Act and the model button.
+        val toggles = panel.all(javax.swing.JToggleButton::class.java)
+        val plan = toggles.first { it.text == "Plan" }
+        val act = toggles.first { it.text == "Act" }
+        assertTrue("Act should start selected", act.isSelected)
+        plan.doClick()
+        assertTrue("mode never switched to plan", pump(30_000) { service.store?.mode == "plan" && plan.isSelected })
+        act.doClick()
+        assertTrue("mode never switched back to act", pump(30_000) { service.store?.mode == "act" && act.isSelected })
+        val modelPanel = ModelPanel(service.store!!)
+        assertTrue("providers never loaded", pump(30_000) { modelPanel.chosenProvider != null })
+        modelPanel.chooseProvider("anthropic")
+        modelPanel.chooseModel("claude-sonnet-5")
+        modelPanel.apply().get(30, java.util.concurrent.TimeUnit.SECONDS)
+        assertTrue("model button never showed the new provider", pump(30_000) { panel.all(JButton::class.java).any { it.text.startsWith("anthropic") } })
+        // Leave a provider with no key behind, as the core's defaults expect.
+        service.store!!.models.select("openrouter", "act", "anthropic/claude-sonnet-5.5").get(30, java.util.concurrent.TimeUnit.SECONDS)
         panel.dispose()
     }
 }
 
+
+class CoreLocatorTest : BasePlatformTestCase() {
+    fun `test platform names match the folders under binaries`() {
+        assertEquals("darwin-arm64", CoreLocator.platformTarget("Mac OS X", "aarch64"))
+        assertEquals("darwin-x64", CoreLocator.platformTarget("Mac OS X", "x86_64"))
+        assertEquals("linux-x64", CoreLocator.platformTarget("Linux", "amd64"))
+        assertEquals("linux-aarch64", CoreLocator.platformTarget("Linux", "aarch64"))
+        assertEquals("win-x64", CoreLocator.platformTarget("Windows 11", "amd64"))
+        assertNull(CoreLocator.platformTarget("Linux", "riscv64"))
+        assertNull(CoreLocator.platformTarget("FreeBSD", "amd64"))
+    }
+
+    fun `test node versions parse`() {
+        assertEquals(22, CoreLocator.parseNodeMajor("v22.15.0\n"))
+        assertEquals(24, CoreLocator.parseNodeMajor("24.16.0"))
+        assertNull(CoreLocator.parseNodeMajor("not node"))
+    }
+
+    fun `test NODE_PATH puts the platform's native modules first and keeps the existing path`() {
+        val dir = FileUtil.createTempDirectory("core", null)
+        val core = java.io.File(dir, "cline-core.js").also { it.writeText("") }
+        java.io.File(dir, "binaries/${CoreLocator.platformTarget()}/node_modules/better-sqlite3").mkdirs()
+        val env = CoreLocator.environmentFor(core, "/existing")
+        val parts = env.getValue("NODE_PATH").split(java.io.File.pathSeparator)
+        assertEquals(java.io.File(dir, "binaries/${CoreLocator.platformTarget()}/node_modules").path, parts[0])
+        assertEquals("/existing", parts[1])
+        assertTrue(CoreLocator.environmentFor(java.io.File(FileUtil.createTempDirectory("bare", null), "cline-core.js")).isEmpty())
+    }
+
+    fun `test a core that already finds its native modules gets no NODE_PATH`() {
+        val dir = FileUtil.createTempDirectory("checkout", null)
+        java.io.File(dir, "node_modules/better-sqlite3").mkdirs()
+        val core = java.io.File(dir, "dist/cline-core.js").also { it.parentFile.mkdirs(); it.writeText("") }
+        java.io.File(core.parentFile, "binaries/${CoreLocator.platformTarget()}/node_modules/better-sqlite3").mkdirs()
+        assertTrue(CoreLocator.hasInstalledNativeModules(core))
+        assertTrue(CoreLocator.environmentFor(core).isEmpty())
+    }
+
+    fun `test the core in the plugin is found with its manifest and native modules`() {
+        val bundled = CoreLocator.bundledCoreJs()
+        if (bundled == null) {
+            println("SKIPPED: no core is bundled in this build")
+            return
+        }
+        println("BUNDLED: " + bundled.path)
+        assertTrue(java.io.File(bundled.parentFile, "extension/package.json").isFile)
+        assertNotNull("native modules for this platform", CoreLocator.nativeModules(bundled))
+        assertTrue(CoreLocator.environmentFor(bundled).containsKey("NODE_PATH"))
+    }
+
+    fun `test the bundled core starts when Node 22 is available and otherwise the service says which Node it needs`() {
+        val settings = ClineSettings.getInstance().state
+        val bundled = CoreLocator.bundledCoreJs()
+        if (bundled == null) {
+            println("SKIPPED: no core is bundled in this build")
+            return
+        }
+        settings.nodePath = ""
+        settings.corePath = bundled.path
+        val node = CoreLocator.node(settings) ?: error("no node")
+        val major = CoreLocator.nodeMajor(node)
+        settings.dataDir = FileUtil.createTempDirectory("cline-data", null).path
+        val service = ClineProjectService.getInstance(project)
+        try {
+            service.start()
+            if (major == CoreLocator.REQUIRED_NODE_MAJOR) {
+                val end = System.currentTimeMillis() + 90_000
+                while (System.currentTimeMillis() < end && service.status != ClineProjectService.Status.CONNECTED) {
+                    UIUtil.dispatchAllInvocationEvents(); Thread.sleep(100)
+                }
+                assertEquals(ClineProjectService.Status.CONNECTED, service.status)
+                println("BUNDLED STARTED on node $major")
+            } else {
+                assertEquals(ClineProjectService.Status.WRONG_NODE, service.status)
+                assertTrue(service.nodeProblem, service.nodeProblem!!.contains("needs Node 22"))
+                println("WRONG NODE reported: " + service.nodeProblem)
+            }
+        } finally {
+            service.dispose()
+            settings.dataDir = ""
+            settings.corePath = ""
+        }
+    }
+}

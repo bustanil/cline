@@ -67,6 +67,38 @@ class RealCoreSmokeTest {
             val none = bot.cline.jetbrains.chat.ChatStore(core!!).changedFiles().get(30, TimeUnit.SECONDS)
             assertTrue(none.isEmpty(), "changed files before any task: $none")
 
+            // The @ mention search runs in the workspace and finds the file by a part of its name.
+            val mention = bot.cline.jetbrains.chat.ChatStore(core!!).searchMentions("a.tx").get(60, TimeUnit.SECONDS)
+            println("MENTION: " + mention)
+            assertTrue(mention.matches.any { it.path.endsWith("a.txt") }, "mention search: $mention")
+
+            // Provider, model, key, mode and history go through the same stream.
+            val settings = bot.cline.jetbrains.chat.ChatStore(core!!)
+            settings.start().get(60, TimeUnit.SECONDS)
+            val providers = settings.models.providers().get(30, TimeUnit.SECONDS)
+            assertTrue(providers.any { it.id == "anthropic" }, "providers: ${providers.map { it.id }}")
+            settings.models.select("anthropic", "act", "claude-sonnet-5").get(30, TimeUnit.SECONDS)
+            val deadline0 = System.currentTimeMillis() + 30_000
+            while (System.currentTimeMillis() < deadline0 && bot.cline.jetbrains.chat.ModelSettings.current(settings.snapshot.extensionState, "act").providerId != "anthropic") Thread.sleep(100)
+            println("MODEL: " + bot.cline.jetbrains.chat.ModelSettings.current(settings.snapshot.extensionState, "act", providers))
+            assertTrue(bot.cline.jetbrains.chat.ModelSettings.current(settings.snapshot.extensionState, "act").providerId == "anthropic")
+            settings.models.saveApiKey("anthropic", "sk-test-123").get(30, TimeUnit.SECONDS)
+            assertTrue(settings.models.apiKeyLength("anthropic").get(30, TimeUnit.SECONDS) == 11)
+            val list = settings.models.models("anthropic").get(60, TimeUnit.SECONDS)
+            assertTrue(list.ok && list.models.any { it.id.startsWith("claude") }, "models: $list")
+            settings.setMode("plan").get(30, TimeUnit.SECONDS)
+            val deadline1 = System.currentTimeMillis() + 30_000
+            while (System.currentTimeMillis() < deadline1 && settings.mode != "plan") Thread.sleep(100)
+            assertTrue(settings.mode == "plan", "mode is ${settings.mode}")
+            assertTrue(settings.history.list().get(30, TimeUnit.SECONDS).items.isEmpty())
+            assertTrue(runCatching { settings.history.open("no-such-task").get(30, TimeUnit.SECONDS) }.isFailure)
+            // Back to a provider with no key, so the task below fails locally and sends nothing to a remote API.
+            settings.models.select("openrouter", "act", "anthropic/claude-sonnet-5.5").get(30, TimeUnit.SECONDS)
+            settings.models.saveApiKey("anthropic", "").get(30, TimeUnit.SECONDS)
+            settings.stop()
+            // Put Plan/Act back so the task below runs the way the earlier checks assume.
+            settings.setMode("act").get(30, TimeUnit.SECONDS)
+
             // A task with no provider credential fails, and the failure must reach the transcript.
             val store = bot.cline.jetbrains.chat.ChatStore(core!!)
             store.start().get(60, TimeUnit.SECONDS)

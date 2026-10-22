@@ -19,7 +19,12 @@ import java.util.concurrent.CopyOnWriteArrayList
  */
 @Service(Service.Level.PROJECT)
 class ClineProjectService(private val project: Project) : Disposable {
-    enum class Status { NOT_STARTED, STARTING, CONNECTED, MISSING_NODE, MISSING_CORE }
+    enum class Status { NOT_STARTED, STARTING, CONNECTED, MISSING_NODE, MISSING_CORE, WRONG_NODE }
+
+    /** Set when [status] is [Status.WRONG_NODE]: the Node found and the version the bundled core needs. */
+    @Volatile
+    var nodeProblem: String? = null
+        private set
 
     private val listeners = CopyOnWriteArrayList<() -> Unit>()
     val bridge = IntelliJBridge(project)
@@ -88,6 +93,16 @@ class ClineProjectService(private val project: Project) : Disposable {
         if (node == null) return fail(Status.MISSING_NODE)
         val coreJs = CoreLocator.coreJs(settings)
         if (coreJs == null) return fail(Status.MISSING_CORE)
+        val env = CoreLocator.environmentFor(coreJs)
+        // The native modules shipped with the core are built for one Node version; a different one fails on load.
+        if (env.isNotEmpty()) {
+            val major = CoreLocator.nodeMajor(node)
+            if (major != null && major != CoreLocator.REQUIRED_NODE_MAJOR) {
+                nodeProblem = "Found Node $major at $node. The core in this plugin needs Node ${CoreLocator.REQUIRED_NODE_MAJOR}."
+                return fail(Status.WRONG_NODE)
+            }
+        }
+        nodeProblem = null
 
         val created = CoreHost(
             CoreLaunch(
@@ -95,6 +110,7 @@ class ClineProjectService(private val project: Project) : Disposable {
                 coreJs = coreJs,
                 dataDir = settings.dataDir.takeIf { it.isNotBlank() }?.let(::File),
                 ide = bridge,
+                env = env,
                 logFile = File(PathManager.getLogPath(), "cline-core.log"),
             ),
         )

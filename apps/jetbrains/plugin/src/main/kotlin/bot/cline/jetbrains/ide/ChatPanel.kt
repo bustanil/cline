@@ -10,6 +10,8 @@ import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.application.ModalityState
 import com.intellij.openapi.options.ShowSettingsUtil
+import com.intellij.openapi.ui.DialogWrapper
+import bot.cline.jetbrains.chat.ModelSettings
 import com.intellij.openapi.project.Project
 import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBScrollPane
@@ -54,6 +56,7 @@ class ChatPanel(private val project: Project) : JPanel(BorderLayout()), Disposab
         emptyText.text = "Type a task, or a reply. Enter sends, Shift+Enter adds a line."
         addKeyListener(object : KeyAdapter() {
             override fun keyPressed(e: KeyEvent) {
+                if (mentions.handleKey(e)) return
                 if (e.keyCode == KeyEvent.VK_ENTER && !e.isShiftDown) {
                     e.consume()
                     send()
@@ -61,9 +64,15 @@ class ChatPanel(private val project: Project) : JPanel(BorderLayout()), Disposab
             }
         })
     }
+    private val newChat = JButton("New chat").apply { addActionListener { service.store?.let { report(it.clearTask()) } } }
+    private val historyButton = JButton("History").apply { addActionListener { showHistory() } }
+    private val planButton = javax.swing.JToggleButton("Plan").apply { addActionListener { service.store?.let { report(it.setMode("plan")) } } }
+    private val actButton = javax.swing.JToggleButton("Act").apply { addActionListener { service.store?.let { report(it.setMode("act")) } } }
+    private val modelButton = JButton("Model…").apply { addActionListener { showModel() } }
     private val changed = ChangedFilesPanel(project, store = { service.store })
     private var lastPhase: String? = null
     private var shownStore: ChatStore? = null
+    private val mentions: MentionController = MentionController(input, search = { query -> service.store?.searchMentions(query) ?: CompletableFuture.completedFuture(bot.cline.jetbrains.chat.MentionResults(emptyList(), null, null)) })
     private val sendButton = JButton("Send").apply { addActionListener { send() } }
     private val listener: () -> Unit = { ApplicationManager.getApplication().invokeLater(::refresh, ModalityState.any()) }
     private val inputListener: (String) -> Unit = { text ->
@@ -79,7 +88,16 @@ class ChatPanel(private val project: Project) : JPanel(BorderLayout()), Disposab
 
     init {
         val top = JPanel(BorderLayout()).apply {
-            add(JPanel(FlowLayout(FlowLayout.LEFT)).apply { add(notice); add(settingsButton) }, BorderLayout.CENTER)
+            add(
+                JPanel(BorderLayout()).apply {
+                    add(JPanel(FlowLayout(FlowLayout.LEFT, 4, 2)).apply {
+                        val modes = javax.swing.ButtonGroup().apply { add(planButton); add(actButton) }
+                        add(newChat); add(historyButton); add(planButton); add(actButton); add(modelButton)
+                    }, BorderLayout.NORTH)
+                    add(JPanel(FlowLayout(FlowLayout.LEFT)).apply { add(notice); add(settingsButton) }, BorderLayout.CENTER)
+                },
+                BorderLayout.CENTER,
+            )
             add(metrics, BorderLayout.SOUTH)
         }
         val buttons = JPanel(FlowLayout(FlowLayout.LEFT)).apply { add(primary); add(secondary) }
@@ -95,6 +113,7 @@ class ChatPanel(private val project: Project) : JPanel(BorderLayout()), Disposab
         add(top, BorderLayout.NORTH)
         add(scroll, BorderLayout.CENTER)
         add(footer, BorderLayout.SOUTH)
+        mentions.attach()
         service.addListener(listener)
         service.addInputListener(inputListener)
         service.start()
@@ -110,12 +129,23 @@ class ChatPanel(private val project: Project) : JPanel(BorderLayout()), Disposab
             ClineProjectService.Status.STARTING -> "Starting Cline…"
             ClineProjectService.Status.MISSING_NODE -> "Node was not found. Set its path in Settings > Tools > Cline."
             ClineProjectService.Status.MISSING_CORE -> "cline-core.js was not found. Set its path in Settings > Tools > Cline."
+            ClineProjectService.Status.WRONG_NODE -> (service.nodeProblem ?: "Wrong Node version.") + " Set a Node 22 path in Settings > Tools > Cline."
             ClineProjectService.Status.CONNECTED -> ""
         }
         (notice.parent as? JPanel)?.isVisible = !connected
-        settingsButton.isVisible = status == ClineProjectService.Status.MISSING_NODE || status == ClineProjectService.Status.MISSING_CORE
+        settingsButton.isVisible = status in setOf(ClineProjectService.Status.MISSING_NODE, ClineProjectService.Status.MISSING_CORE, ClineProjectService.Status.WRONG_NODE)
         input.isEnabled = connected
         sendButton.isEnabled = connected
+        for (b in listOf(newChat, historyButton, planButton, actButton, modelButton)) b.isEnabled = connected
+        if (store != null) {
+            val mode = store.mode
+            planButton.isSelected = mode == "plan"
+            actButton.isSelected = mode != "plan"
+            val providers = emptyList<bot.cline.jetbrains.chat.ProviderOption>()
+            val current = ModelSettings.current(store.snapshot.extensionState, mode, providers)
+            modelButton.text = listOfNotNull(current.providerId, current.modelId?.substringAfterLast('/')).joinToString(" · ").ifEmpty { "Model…" }
+            modelButton.toolTipText = "Provider and model for ${mode.replaceFirstChar { it.uppercase() }} mode"
+        }
         if (store == null) {
             clearRows()
             updateButtons(null)
@@ -177,6 +207,43 @@ class ChatPanel(private val project: Project) : JPanel(BorderLayout()), Disposab
         transcript.removeAll()
         transcript.revalidate()
         transcript.repaint()
+    }
+
+    private fun showHistory() {
+        val store = service.store ?: return
+        lateinit var dialog: DialogWrapper
+        val content = HistoryPanel(store, onOpened = { dialog.close(DialogWrapper.OK_EXIT_CODE) })
+        dialog = object : DialogWrapper(project, true) {
+            init {
+                title = "Task History"
+                setOKButtonText("Close")
+                init()
+            }
+
+            override fun createCenterPanel() = content
+
+            override fun createActions() = arrayOf(okAction)
+        }
+        dialog.show()
+    }
+
+    private fun showModel() {
+        val store = service.store ?: return
+        val content = ModelPanel(store)
+        val dialog = object : DialogWrapper(project, true) {
+            init {
+                title = "Model and API Key"
+                init()
+            }
+
+            override fun createCenterPanel() = content
+
+            override fun doOKAction() {
+                super.doOKAction()
+                report(content.apply())
+            }
+        }
+        dialog.show()
     }
 
     private fun updateButtons(store: ChatStore?) {

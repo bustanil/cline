@@ -18,6 +18,8 @@ data class CoreLaunch(
     /** Data folder; null uses the shared `~/.cline`. */
     val dataDir: File? = null,
     val ide: IdeBridge = object : IdeBridge {},
+    /** Extra environment for the core, such as `NODE_PATH` for native modules. */
+    val env: Map<String, String> = emptyMap(),
     /** Where the core's output goes. */
     val logFile: File? = null,
     /** First restart delay; it doubles up to [maxRestartDelayMs]. */
@@ -84,6 +86,7 @@ class CoreHost(private val launch: CoreLaunch) : AutoCloseable {
                 put("CLINE_CORE_CONNECTION_TOKEN", token)
                 put("CLINE_CORE_INSTANCE_ID", "jetbrains-" + UUID.randomUUID())
                 put("HOST_BRIDGE_ADDRESS", "127.0.0.1:${srv.port}")
+                putAll(launch.env)
                 launch.dataDir?.let { put("CLINE_DIR", it.path) }
             }
             val started = builder.start()

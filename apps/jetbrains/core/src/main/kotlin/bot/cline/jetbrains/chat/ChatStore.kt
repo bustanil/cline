@@ -27,6 +27,23 @@ class ChatStore(private val core: CoreApi) {
     /** Turns file paths in chat text into links that open at their line. */
     val fileLinks = FileLinks(core)
 
+    /** Files and folders matching what follows an `@` in the input. */
+    fun searchMentions(query: String, limit: Int = 20): CompletableFuture<MentionResults> = Mentions.search(core, query, limit)
+
+    /** Provider, model and API key. */
+    val models = ModelSettings(core)
+
+    /** Past tasks. */
+    val history = TaskHistory(core)
+
+    /** `plan` or `act`, from the latest state. */
+    val mode: String
+        get() = snapshot.extensionState.get("mode")?.takeIf { it.isJsonPrimitive }?.asString ?: "act"
+
+    /** Switches between Plan and Act. */
+    fun setMode(mode: String): CompletableFuture<String> =
+        core.call("cline.StateService", "togglePlanActModeProto", JsonObject().apply { addProperty("mode", mode.uppercase()) }.toString())
+
     private val listeners = CopyOnWriteArrayList<(ChatSnapshot) -> Unit>()
     private val subscriptions = mutableListOf<Subscription>()
     private var replica = ReplicaState.empty()

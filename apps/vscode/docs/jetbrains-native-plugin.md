@@ -14,6 +14,56 @@ Facts below come from this repository as of commit `5dcfddc` (fork `bustanil/cli
 | Not ACP | Cline's ACP agent (`apps/cli/src/acp`) sends no diffs, no file locations, and refuses embedded snippets (`embeddedContext: false`), which are the features this plugin exists for. |
 | Commits go to `main` of the fork, no PRs | Per the owner. |
 
+## Where the plugin stands
+
+The plugin lives in `apps/jetbrains` (Gradle, Kotlin, JVM 21). All seven steps under [Suggested order](#suggested-order) work. They are tested against the real core, not only fakes.
+
+| Module | Holds |
+|---|---|
+| `:core` | Plain Kotlin, no IDE classes. The gRPC server the core connects to, request routing, the process supervisor (`CoreHost`), the chat model (`ChatStore`, `ReplicaState`, `Transcript`, `RowRenderer`), button config, file links, editor commands, changed files, history, models and `@` mentions. |
+| `:plugin` | IntelliJ Platform code. `IntelliJBridge` implements `IdeBridge`. The tool window, rows, panels, editor actions, the "Fix with Cline" intention and settings. |
+
+Build and test:
+
+```bash
+# Once: build the core (needs Bun 1.4.2)
+cd apps/vscode && bun install && bun run build:sdk && bun run protos && bun esbuild.mjs --standalone && node scripts/package-standalone.mjs
+cd apps/jetbrains
+./gradlew :core:test :plugin:test                      # unit and IDE-fixture tests
+CLINE_CORE_JS=$PWD/../vscode/dist-standalone/cline-core.js ./gradlew :core:test :plugin:test   # also runs against the real core
+./gradlew :plugin:buildPlugin                          # plugin/build/distributions/plugin.zip, with the core inside if it was built
+```
+
+What each step became:
+
+| Step | Where |
+|---|---|
+| 1 Connection | `CoreConnectionServer`, `CoreHost`, `CoreConnection`, `EnvService`, `WorkspaceService`, `WindowService`, `DiffService` |
+| 2 Minimal chat | `ChatStore`, `ReplicaState` (port of `messageReducer.ts`), `ProtoMessageConverter` |
+| 3 Approvals | `ButtonConfigs` (port of `buttonConfig.ts`), `ChatStore.perform`, `ChatStore.send` |
+| 4 Navigation | `FileLinks`, `MarkdownHtml`, `IntelliJBridge.showTextDocument` |
+| 5 Snippets | `EditorCommands`, `EditorContextBuilder`, `ClineEditorActions`, `FixWithClineIntention` |
+| 6 Changes | `ChangedFile`, `ChangedFilesPanel`, `IntelliJBridge.openMultiFileDiff` |
+| 7 Rows, history, Plan/Act, models | `Transcript`, `RowRenderer`, `HtmlRow`, `HistoryPanel`, `ModelPanel`, toolbar in `ChatPanel`, `MentionController` |
+
+Facts this work established, which the sections below did not know:
+
+- **No gRPC code generator.** The grpc-java generator and the repo's own `protoc` both ship an x86_64 binary for macOS arm64 and need Rosetta. The build generates message classes only. `HostService` and `CoreConnectionService` define services by hand.
+- **The core needs `extension/package.json`** next to `cline-core.js`. `package-standalone.mjs` does not create it. The plugin build copies `apps/vscode/package.json` there.
+- **The standalone build does not choose `better-sqlite3` for you.** It ships one per platform under `binaries/<os>-<arch>/node_modules` and leaves the choice to the installer. The plugin sets `NODE_PATH` to the right folder (`CoreLocator.environmentFor`). Those binaries are built for Node 22, so the plugin refuses to start the bundled core on another Node major and says so.
+- **Partial messages use proto enum names** (`TOOL_SAY`), state snapshots use strings (`tool`). `ProtoMessageConverter` maps them. Proto3 JSON leaves out default values, so an absent `type` is `ASK` and an absent `say` is `task`.
+- **A failed request shows as `ask/api_req_failed`**, and the webview hides that kind. The plugin shows it, because in this build it is the only place the reason appears.
+- **Checkpoint reverts go back to the latest checkpoint**, not to "before the last edit". The revert dialog says so.
+- **`commitModelSelection` also switches the provider** for that mode. `writeProviderConfig` stores the API key; `readProviderConfig` returns only its length.
+
+Not done, and not verified:
+
+- **Run with Node 22.15.0.** The tests ran on Node 24 against a core whose `better-sqlite3` resolves from the source checkout. The bundled core, with its Node 22 binaries, was found and its wrong-Node guard was tested. Starting it on Node 22 was not run, because Node 22 was not installed on the build machine.
+- **A task that finishes.** No model credential was available, so no test ran an agent turn to completion. Tool approvals, diffs and the changed-files list are tested with fake data and with the real core's empty answers, not with a real edit.
+- **Not ported:** attaching images and files, editing an earlier message (`editMessageAndRegenerate`), browser sessions, MCP, subagents, worktrees, cloud sessions, rules and workflows screens, and a proper settings screen for providers beyond the key and model. These messages draw as plain text. The input has no image paste.
+- **Runtime checks that need a person:** how the tool window looks in light and dark themes, the `@` popup position, and the diff window opened from the editor. The tests cover the logic and the component trees, not the pixels. `plugin.zip` was built but not loaded in a running IDE.
+- **The two gaps below** (live changed-files list, the agent not told about a revert) still hold. Both were confirmed in `SdkController.ts`.
+
 ## Goals, in priority order
 
 1. **Two-way IDE ↔ agent integration.**
