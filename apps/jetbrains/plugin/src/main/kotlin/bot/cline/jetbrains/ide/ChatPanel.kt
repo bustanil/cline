@@ -104,11 +104,11 @@ class ChatPanel(private val project: Project) : JPanel(BorderLayout()), Disposab
             return
         }
         val snapshot = store.snapshot
-        syncRows(snapshot)
+        syncRows(store, snapshot)
         updateButtons(store)
     }
 
-    private fun syncRows(snapshot: ChatSnapshot) {
+    private fun syncRows(store: ChatStore, snapshot: ChatSnapshot) {
         val atBottom = scroll.verticalScrollBar.let { it.value + it.visibleAmount >= it.maximum - 8 }
         val present = snapshot.messages.map { it.ts }.toSet()
         if (rows.keys.any { it !in present } || rows.keys.toList() != snapshot.messages.map { it.ts }.take(rows.size)) {
@@ -119,7 +119,7 @@ class ChatPanel(private val project: Project) : JPanel(BorderLayout()), Disposab
             if (existing != null) {
                 existing.update(message)
             } else {
-                val row = ChatRows.create(message)
+                val row = ChatRows.create(message, RowContext(store.fileLinks))
                 rows[message.ts] = row
                 transcript.add(row.component)
             }

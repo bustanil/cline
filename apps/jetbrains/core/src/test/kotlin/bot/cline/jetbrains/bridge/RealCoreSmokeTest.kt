@@ -23,12 +23,15 @@ class RealCoreSmokeTest {
         val connected = CountDownLatch(1)
         var core: CoreConnection? = null
         val workspace = File.createTempFile("cline-ws", "").also { it.delete(); it.mkdirs() }
+        File(workspace, "a.txt").writeText("one\ntwo\nthree\nfour\n")
         val userMessages = java.util.concurrent.CopyOnWriteArrayList<UserMessage>()
+        val opened = java.util.concurrent.CopyOnWriteArrayList<Triple<String, Int?, Int?>>()
         val server = CoreConnectionServer(
             token,
             object : IdeBridge {
                 override fun workspacePaths() = listOf(workspace.path)
                 override fun showMessage(message: UserMessage): String? { userMessages += message; return null }
+                override fun showTextDocument(path: String, startLine: Int?, endLine: Int?) { opened += Triple(path, startLine, endLine) }
             },
         ) { core = it; connected.countDown() }.start()
         val log = File.createTempFile("cline-core", ".log")
@@ -50,6 +53,15 @@ class RealCoreSmokeTest {
             val state = core!!.call("cline.StateService", "getLatestState").get(60, TimeUnit.SECONDS)
             println("STATE: " + state.length + " chars; starts " + state.take(200))
             assertTrue(state.contains("stateJson"), "state response: " + state.take(300))
+
+            // A file path written in chat resolves against the workspace and opens at its lines.
+            val links = bot.cline.jetbrains.chat.FileLinks(core!!)
+            val link = links.resolve("a.txt:2-3").get(30, TimeUnit.SECONDS)
+            assertTrue(link != null && link.path.endsWith("/a.txt") && link.startLine == 2 && link.endLine == 3, "resolve gave $link")
+            assertTrue(links.resolve("nope-not-here.txt").get(30, TimeUnit.SECONDS) == null)
+            links.open(link!!).get(30, TimeUnit.SECONDS)
+            assertTrue(opened.any { it.first.endsWith("/a.txt") && it.second == 2 && it.third == 3 }, "bridge got $opened")
+            println("LINK: " + link + " opened=" + opened)
 
             // A task with no provider credential fails, and the failure must reach the transcript.
             val store = bot.cline.jetbrains.chat.ChatStore(core!!)

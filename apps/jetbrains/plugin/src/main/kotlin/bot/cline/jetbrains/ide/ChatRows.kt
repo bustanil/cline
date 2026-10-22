@@ -1,6 +1,7 @@
 package bot.cline.jetbrains.ide
 
 import bot.cline.jetbrains.chat.ChatMessage
+import bot.cline.jetbrains.chat.FileLinks
 import com.google.gson.GsonBuilder
 import com.google.gson.JsonParser
 import com.intellij.ui.components.JBLabel
@@ -18,9 +19,22 @@ interface ChatRow {
     fun update(message: ChatMessage)
 }
 
+/** What rows need from the chat: turning file paths into links, and opening them. */
+class RowContext(val fileLinks: FileLinks)
+
 object ChatRows {
+    private val markdownSays = setOf("text", "completion_result", "reasoning")
+
     /** Picks the row for a message. A kind without a dedicated row gets the plain-text fallback. */
-    fun create(message: ChatMessage): ChatRow = PlainTextRow(message)
+    fun create(message: ChatMessage, context: RowContext): ChatRow {
+        val type = message.raw.get("type")?.asString
+        val kind = message.raw.get(type ?: "say")?.takeIf { it.isJsonPrimitive }?.asString
+        return when {
+            type == "say" && kind in markdownSays -> MarkdownRow(message, context)
+            type == "ask" && kind == "completion_result" -> MarkdownRow(message, context)
+            else -> PlainTextRow(message)
+        }
+    }
 }
 
 /**

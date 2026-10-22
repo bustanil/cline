@@ -24,6 +24,9 @@ data class ChatSnapshot(
  * Listeners run on the thread that delivered the update, not the UI thread.
  */
 class ChatStore(private val core: CoreApi) {
+    /** Turns file paths in chat text into links that open at their line. */
+    val fileLinks = FileLinks(core)
+
     private val listeners = CopyOnWriteArrayList<(ChatSnapshot) -> Unit>()
     private val subscriptions = mutableListOf<Subscription>()
     private var replica = ReplicaState.empty()
