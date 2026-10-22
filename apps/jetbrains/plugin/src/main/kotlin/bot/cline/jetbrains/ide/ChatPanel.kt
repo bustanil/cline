@@ -36,10 +36,13 @@ class ChatPanel(private val project: Project) : JPanel(BorderLayout()), Disposab
     private val rows = LinkedHashMap<Long, ChatRow>()
     private val transcript = JPanel().apply {
         layout = BoxLayout(this, BoxLayout.Y_AXIS)
-        isOpaque = false
+        isOpaque = true
+        background = ChatColors.page
     }
     private val scroll = JBScrollPane(transcript).apply {
         border = JBUI.Borders.empty()
+        viewport.background = ChatColors.page
+        background = ChatColors.page
         horizontalScrollBarPolicy = ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER
     }
     private val metrics = JBLabel().apply { border = JBUI.Borders.empty(2, 10); foreground = com.intellij.util.ui.UIUtil.getContextHelpForeground() }
@@ -172,11 +175,11 @@ class ChatPanel(private val project: Project) : JPanel(BorderLayout()), Disposab
 
     private fun syncRows(store: ChatStore, snapshot: ChatSnapshot) {
         val atBottom = scroll.verticalScrollBar.let { it.value + it.visibleAmount >= it.maximum - 8 }
-        val items = Transcript.build(snapshot.messages)
+        val items = Transcript.build(snapshot.messages, snapshot.turnState?.phase)
         val keys = items.map { it.key }
         // Rows only ever grow at the end while a task runs. Anything else (a new task, history) starts over.
         if (rows.keys.toList() != keys.take(rows.size)) clearRows()
-        val context = RowContext(store.fileLinks, reply = { text -> report(store.send(text)) })
+        val context = RowContext(store.fileLinks, reply = { text -> report(store.send(text)) }, highlighter = IdeCodeHighlighter(project))
         for ((index, item) in items.withIndex()) {
             val existing = rows[item.key]
             if (existing != null && existing.update(item)) continue

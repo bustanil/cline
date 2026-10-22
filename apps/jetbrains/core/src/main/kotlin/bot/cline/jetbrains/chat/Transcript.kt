@@ -3,7 +3,7 @@ package bot.cline.jetbrains.chat
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 
-/** One drawn row of the chat: a single message, or a run of read-only tool calls shown together. */
+/** One drawn row of the chat: a single message, or a run of commands and tool calls shown together. */
 sealed interface TranscriptItem {
     /** Stable while the row grows, so the UI can update it in place. */
     val key: Long
@@ -12,7 +12,11 @@ sealed interface TranscriptItem {
         override val key: Long get() = message.ts
     }
 
-    data class ToolGroup(val messages: List<ChatMessage>) : TranscriptItem {
+    /**
+     * Commands and tool calls that follow each other. [running] is true while the turn is still
+     * working and this run is the last thing in the chat; its last step is the one in progress.
+     */
+    data class Activity(val messages: List<ChatMessage>, val running: Boolean) : TranscriptItem {
         override val key: Long get() = messages.first().ts
     }
 }
@@ -20,17 +24,19 @@ sealed interface TranscriptItem {
 /**
  * Turns the raw message list into what the chat draws. A port of the webview's
  * `combineApiRequests`, `combineCommandSequences` and the parts of
- * `messageUtils` the first version needs: hiding bookkeeping rows and grouping
- * read-only tool calls. Browser sessions and subagents are not grouped; they
- * draw as plain text.
+ * `messageUtils` the first version needs: hiding bookkeeping rows. Commands and
+ * tool calls that follow each other are grouped as one activity. Browser
+ * sessions and subagents are not grouped; they draw as plain text.
  */
 object Transcript {
     const val COMMAND_OUTPUT = "Output:"
 
-    private val lowStakesTools = setOf("readFile", "listFilesTopLevel", "listFilesRecursive", "listCodeDefinitionNames", "searchFiles")
-
-    fun build(messages: List<ChatMessage>): List<TranscriptItem> =
-        group(visible(combineCommandSequences(combineApiRequests(messages))))
+    /**
+     * [turnPhase] is the core's `turnState.phase`. While it is `streaming`, the last activity is running;
+     * an approval still waiting (`awaiting_approval`) is kept as its own row so it stays in view.
+     */
+    fun build(messages: List<ChatMessage>, turnPhase: String? = null): List<TranscriptItem> =
+        group(visible(combineCommandSequences(combineApiRequests(messages))), turnPhase)
 
     /** Merges each `api_req_started` with the `api_req_finished` after it, and drops the finished rows. */
     fun combineApiRequests(messages: List<ChatMessage>): List<ChatMessage> {
@@ -100,27 +106,33 @@ object Transcript {
         }
     }
 
-    /** Runs of consecutive read-only tool calls become one group; everything else stays single. */
-    fun group(messages: List<ChatMessage>): List<TranscriptItem> {
+    /**
+     * Runs of consecutive commands and tool calls become one activity, with the model's thinking between
+     * them folded in; everything else stays single.
+     */
+    fun group(messages: List<ChatMessage>, turnPhase: String? = null): List<TranscriptItem> {
         val items = mutableListOf<TranscriptItem>()
         val run = mutableListOf<ChatMessage>()
-        fun flush() {
-            when (run.size) {
-                0 -> {}
-                1 -> items += TranscriptItem.Single(run[0])
-                else -> items += TranscriptItem.ToolGroup(run.toList())
+        fun flush(isLast: Boolean) {
+            if (run.isEmpty()) return
+            // Thinking between steps folds into the activity. Thinking with no step next to it stays its own row.
+            if (run.any(::isActivity)) {
+                items += TranscriptItem.Activity(run.toList(), running = isLast && turnPhase == "streaming")
+            } else {
+                run.forEach { items += TranscriptItem.Single(it) }
             }
             run.clear()
         }
-        for (m in messages) {
-            if (isLowStakesTool(m)) run += m else { flush(); items += TranscriptItem.Single(m) }
+        for ((index, m) in messages.withIndex()) {
+            val waitingForApproval = index == messages.lastIndex && m.raw.get("type")?.asString == "ask" && turnPhase != "streaming"
+            if ((isActivity(m) && !waitingForApproval) || m.isSay("reasoning")) run += m else { flush(false); items += TranscriptItem.Single(m) }
         }
-        flush()
+        flush(true)
         return items
     }
 
-    fun isLowStakesTool(m: ChatMessage): Boolean =
-        (m.isSay("tool") || m.isAsk("tool")) && ToolInfo.parse(m)?.tool in lowStakesTools
+    /** A command or a tool call, whether it is a question or a report. */
+    fun isActivity(m: ChatMessage): Boolean = m.isCommand() || m.isSay("tool") || m.isAsk("tool")
 
     // The user's answer to a followup that is just one of its offered options is shown by the question itself.
     private fun isEchoOfAskOption(m: ChatMessage, previous: ChatMessage?): Boolean {

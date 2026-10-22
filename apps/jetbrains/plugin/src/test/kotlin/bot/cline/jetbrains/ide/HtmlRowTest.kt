@@ -83,10 +83,11 @@ class HtmlRowTest : BasePlatformTestCase() {
     fun `test reasoning is collapsed until expanded`() {
         val row = row(FakeCore(), TranscriptItem.Single(message(3, "say", "reasoning", "step by step")))
         assertFalse(row.isExpanded)
-        assertFalse(row.component.components.any { it is com.intellij.ui.components.JBHtmlPane })
+        fun hasPane(c: java.awt.Component): Boolean = c is com.intellij.ui.components.JBHtmlPane || (c is java.awt.Container && c.components.any(::hasPane))
+        assertFalse(hasPane(row.component))
         row.toggle()
         assertTrue(row.isExpanded)
-        assertTrue(row.component.components.any { it is com.intellij.ui.components.JBHtmlPane })
+        assertTrue(hasPane(row.component))
     }
 
     fun `test an unknown kind still draws`() {

@@ -106,21 +106,50 @@ class TranscriptVisibilityTest {
 }
 
 class TranscriptGroupTest {
+    private fun shape(items: List<TranscriptItem>) =
+        items.map { if (it is TranscriptItem.Activity) "activity:${it.key}:${it.messages.size}${if (it.running) ":running" else ""}" else "single:${it.key}" }
+
     @Test
-    fun `consecutive read only tools group and other rows split them`() {
+    fun `commands and tools that follow each other form one activity and text splits them`() {
         val items = Transcript.group(
             listOf(
-                tool(1, "readFile"), tool(2, "searchFiles"), tool(3, "listFilesTopLevel"),
+                tool(1, "readFile"), say(2, "command", "ls"), tool(3, "editedExistingFile"),
                 say(4, "text", "thinking"),
                 tool(5, "readFile"),
-                tool(6, "editedExistingFile"),
-                tool(7, "readFile"), tool(8, "readFile"),
+                say(6, "text", "more"),
+                say(7, "command", "a"), say(8, "tool", """{"tool":"readFile","path":"x"}"""),
             ),
         )
-        assertEquals(
-            listOf("group:1:3", "single:4", "single:5", "single:6", "group:7:2"),
-            items.map { if (it is TranscriptItem.ToolGroup) "group:${it.key}:${it.messages.size}" else "single:${it.key}" },
+        assertEquals(listOf("activity:1:3", "single:4", "activity:5:1", "single:6", "activity:7:2"), shape(items))
+    }
+
+    @Test
+    fun `thinking between steps folds into the activity and thinking alone stays its own row`() {
+        val items = Transcript.group(
+            listOf(
+                say(1, "reasoning", "plan"), tool(2, "readFile"), say(3, "reasoning", "hmm"), tool(4, "readFile"), say(5, "reasoning", "ok"),
+                say(6, "text", "Here is the answer"),
+                say(7, "reasoning", "alone"),
+                say(8, "text", "bye"),
+            ),
         )
+        assertEquals(listOf("activity:1:5", "single:6", "single:7", "single:8"), shape(items))
+    }
+
+    @Test
+    fun `the last activity runs while the turn streams and finished ones do not`() {
+        val messages = listOf(say(1, "command", "a"), say(2, "text", "x"), say(3, "command", "b"))
+        assertEquals(listOf("activity:1:1", "single:2", "activity:3:1:running"), shape(Transcript.group(messages, "streaming")))
+        assertEquals(listOf("activity:1:1", "single:2", "activity:3:1"), shape(Transcript.group(messages, "idle")))
+        assertEquals(listOf("activity:1:1", "single:2", "activity:3:1"), shape(Transcript.group(messages, null)))
+    }
+
+    @Test
+    fun `an approval that is waiting stays its own row so it is not hidden in a group`() {
+        val messages = listOf(say(1, "command", "ls"), tool(2, "editedExistingFile", type = "ask"))
+        assertEquals(listOf("activity:1:1", "single:2"), shape(Transcript.group(messages, "awaiting_approval")))
+        // Once the turn moves on, the answered ask joins the activity.
+        assertEquals(listOf("activity:1:2:running"), shape(Transcript.group(messages, "streaming")))
     }
 
     @Test
@@ -132,9 +161,12 @@ class TranscriptGroupTest {
                 ask(4, "command", "ls"), ask(5, "command_output", "a"),
                 say(6, "checkpoint_created"),
             ),
+            "streaming",
         )
         assertEquals(listOf(1L, 4L), items.map { it.key })
-        assertEquals("ls\nOutput:\na", (items[1] as TranscriptItem.Single).message.text())
+        val activity = items[1] as TranscriptItem.Activity
+        assertEquals("ls\nOutput:\na", activity.messages.single().text())
+        assertTrue(activity.running)
     }
 }
 
