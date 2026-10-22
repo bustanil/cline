@@ -173,6 +173,47 @@ class ComposerTest : BasePlatformTestCase() {
         assertEquals("look @", c.input.text)
     }
 
+    private fun streamingCore(phase: String) = object : bot.cline.jetbrains.bridge.CoreApi {
+        val calls = mutableListOf<Pair<String, String>>()
+        override fun call(service: String, method: String, messageJson: String): java.util.concurrent.CompletableFuture<String> {
+            calls += service to method
+            return java.util.concurrent.CompletableFuture.completedFuture(
+                if (method == "getLatestState") com.google.gson.Gson().toJson(mapOf("stateJson" to """{"mode":"act","epoch":1,"stateVersion":1,"turnState":{"phase":"$phase","seq":1},"clineMessages":[]}""")) else "{}",
+            )
+        }
+        override fun subscribe(service: String, method: String, messageJson: String, onMessage: (String) -> Unit, onClose: (Throwable?) -> Unit) = bot.cline.jetbrains.bridge.Subscription {}
+    }
+
+    fun `test while Cline works the send button is a stop button that cancels the task`() {
+        val core = streamingCore("streaming")
+        val store = bot.cline.jetbrains.chat.ChatStore(core).also { it.start().get() }
+        val sent = mutableListOf<String>()
+        val c = Composer(project, store = { store }, onSubmit = { t, _, _ -> sent += t }, clipboardImage = { null })
+        c.update(true)
+        assertTrue(c.isRunning)
+        assertTrue("stop is available with an empty box", c.sendEnabled)
+        assertEquals("Stop", c.sendButton().toolTipText)
+        c.sendButton().click()
+        assertEquals("cancelTask", core.calls.last().second)
+        assertTrue(sent.isEmpty())
+    }
+
+    fun `test when Cline is idle the button sends and is greyed with an empty box`() {
+        val core = streamingCore("idle")
+        val store = bot.cline.jetbrains.chat.ChatStore(core).also { it.start().get() }
+        val sent = mutableListOf<String>()
+        val c = Composer(project, store = { store }, onSubmit = { t, _, _ -> sent += t }, clipboardImage = { null })
+        c.update(true)
+        assertFalse(c.isRunning)
+        assertFalse(c.sendEnabled)
+        assertEquals("Send", c.sendButton().toolTipText)
+        c.input.text = "go"
+        assertTrue(c.sendEnabled)
+        c.sendButton().click()
+        assertEquals(listOf("go"), sent)
+        assertTrue(core.calls.none { it.second == "cancelTask" })
+    }
+
     fun `test the mode switch shows the core's mode and choosing sends it`() {
         val core = ModelPopupTest.PlanCore("plan")
         val store = bot.cline.jetbrains.chat.ChatStore(core).also { it.start().get() }

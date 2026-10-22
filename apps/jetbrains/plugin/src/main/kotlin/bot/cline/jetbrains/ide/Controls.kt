@@ -97,9 +97,21 @@ class SegmentedToggle(
     }
 }
 
-/** A paper plane, for sending. Drawn, so no font or icon set has to carry the glyph. */
+/**
+ * The send control: an outlined paper plane, greyed while the box is empty. While [running] it is a stop
+ * button instead, because sending and stopping share the corner. It is drawn, so no font or icon set has to
+ * carry its glyph.
+ */
 class PaperPlaneButton(private val onClick: () -> Unit) : JComponent() {
     private var hover = false
+
+    /** True while Cline is working: the button then stops the task instead of sending. */
+    var running: Boolean = false
+        set(value) {
+            field = value
+            toolTipText = if (value) "Stop" else "Send"
+            repaint()
+        }
 
     init {
         isOpaque = false
@@ -127,6 +139,16 @@ class PaperPlaneButton(private val onClick: () -> Unit) : JComponent() {
         val g2 = g.create() as Graphics2D
         try {
             g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON)
+            g2.setRenderingHint(RenderingHints.KEY_STROKE_CONTROL, RenderingHints.VALUE_STROKE_PURE)
+            if (running) {
+                // A blue disc with a white square: stop.
+                g2.color = JBColor(0x6B8DF0, 0x5B7FEA)
+                g2.fillOval(JBUI.scale(1), JBUI.scale(1), width - JBUI.scale(2), height - JBUI.scale(2))
+                g2.color = Color.WHITE
+                val side = width * 0.32f
+                g2.fill(java.awt.geom.RoundRectangle2D.Float((width - side) / 2, (height - side) / 2, side, side, JBUI.scale(3).toFloat(), JBUI.scale(3).toFloat()))
+                return
+            }
             if (hover && isEnabled) {
                 g2.color = Color(0, 0, 0, 20)
                 g2.fillRoundRect(0, 0, width, height, JBUI.scale(8), JBUI.scale(8))
@@ -137,7 +159,7 @@ class PaperPlaneButton(private val onClick: () -> Unit) : JComponent() {
             val y = height * 0.2f
             val w = width * 0.6f
             val h = height * 0.6f
-            // The plane: a triangle pointing right with the fold line to its middle.
+            // The plane: a triangle pointing right with a notch at the back, and the fold line to its middle.
             val path = java.awt.geom.Path2D.Float()
             path.moveTo(x, y)
             path.lineTo(x + w, y + h / 2)

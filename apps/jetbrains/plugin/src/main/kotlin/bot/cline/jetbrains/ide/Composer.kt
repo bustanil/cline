@@ -309,7 +309,7 @@ class Composer(
         toolTipText = "Provider, model and effort"
         addActionListener { showModelPopup() }
     }
-    private val send = PaperPlaneButton { submit() }
+    private val send = PaperPlaneButton(onClick = { if (running) store()?.cancelTask() else submit() })
 
     /** Plan: Cline plans and does not edit. Act: Cline makes the changes. */
     val modeToggle = SegmentedToggle(
@@ -324,6 +324,9 @@ class Composer(
         isVisible = false
     }
     private var connected = false
+
+    /** Cline is working on the task: the send control is a stop button. */
+    private var running = false
     private var details: ModelDetails? = null
     private var detailsKey = ""
 
@@ -374,7 +377,9 @@ class Composer(
     private fun isSendReady() = connected && (input.text.isNotBlank() || !attachments.isEmpty)
 
     private fun updateSend() {
-        send.isEnabled = isSendReady()
+        send.running = running
+        // While Cline works the button stops it, so it is always available then.
+        send.isEnabled = running || isSendReady()
         send.repaint()
     }
 
@@ -396,6 +401,7 @@ class Composer(
         plus.isEnabled = connected
         chip.isEnabled = connected
         modeToggle.isEnabled = connected
+        running = connected && store()?.snapshot?.turnState?.phase == "streaming"
         updateSend()
         val current = store() ?: return
         val mode = current.mode
@@ -550,6 +556,8 @@ class Composer(
     internal fun submitForTest() = submit()
 
     internal fun sendButton(): PaperPlaneButton = send
+
+    internal val isRunning: Boolean get() = running
 
     internal fun atButton(): PillButton = at
 
