@@ -18,7 +18,7 @@ class ComposerTest : BasePlatformTestCase() {
     private var chosen: List<File> = emptyList()
     private val dir = FileUtil.createTempDirectory("composer", null)
 
-    private fun composer(): Composer = Composer(project, store = { null }, onSubmit = { t, i, f -> sent += Triple(t, i, f) }, chooseFiles = { chosen })
+    private fun composer(): Composer = Composer(project, store = { null }, onSubmit = { t, i, f -> sent += Triple(t, i, f) }, chooseFiles = { chosen }, clipboardImage = { null })
         .also { it.update(true) }
 
     private fun png(width: Int = 4, height: Int = 4): ByteArray = ByteArrayOutputStream().also { ImageIO.write(BufferedImage(width, height, BufferedImage.TYPE_INT_RGB), "png", it) }.toByteArray()
@@ -41,10 +41,46 @@ class ComposerTest : BasePlatformTestCase() {
         assertTrue(c.sendEnabled)
     }
 
-    fun `test the plus button attaches what the chooser returns and the strip shows it`() {
+    private fun JPopupMenuHelper.item(menu: javax.swing.JPopupMenu, path: String): javax.swing.JMenuItem {
+        val top = menu.components.filterIsInstance<javax.swing.JMenu>().first()
+        return (top.menuComponents.filterIsInstance<javax.swing.JMenuItem>().first { it.text == path })
+    }
+
+    private object JPopupMenuHelper
+
+    fun `test the plus menu has an Add files submenu with the ways to add`() {
+        val menu = composer().plusMenu()
+        assertEquals(1, menu.componentCount)
+        val add = menu.components.single() as javax.swing.JMenu
+        assertEquals("Add files", add.text)
+        assertEquals(listOf("From computer…", "From this project…", "Image from clipboard"), add.menuComponents.filterIsInstance<javax.swing.JMenuItem>().map { it.text })
+    }
+
+    fun `test the project item starts the chooser in the project folder and the computer item does not`() {
+        val starts = mutableListOf<File?>()
+        val c = Composer(project, store = { null }, onSubmit = { _, _, _ -> }, chooseFiles = { start -> starts += start; emptyList() }, clipboardImage = { null }).also { it.update(true) }
+        val menu = c.plusMenu()
+        JPopupMenuHelper.item(menu, "From computer…").doClick()
+        JPopupMenuHelper.item(menu, "From this project…").doClick()
+        assertEquals(null, starts[0])
+        assertEquals(project.basePath?.let(::File), starts[1])
+    }
+
+    fun `test the clipboard item is enabled only when an image is there and adds it`() {
+        val none = Composer(project, store = { null }, onSubmit = { _, _, _ -> }, clipboardImage = { null })
+        assertFalse(JPopupMenuHelper.item(none.plusMenu(), "Image from clipboard").isEnabled)
+        val image = BufferedImage(5, 5, BufferedImage.TYPE_INT_ARGB)
+        val some = Composer(project, store = { null }, onSubmit = { _, _, _ -> }, clipboardImage = { image }).also { it.update(true) }
+        val item = JPopupMenuHelper.item(some.plusMenu(), "Image from clipboard")
+        assertTrue(item.isEnabled)
+        item.doClick()
+        assertEquals(listOf("pasted-image.png"), some.strip().chipNames)
+    }
+
+    fun `test choosing files from the plus menu attaches what the chooser returns and the strip shows it`() {
         chosen = listOf(file("shot.png", png()), file("spec.md"))
         val c = composer()
-        c.findPlus().doClick()
+        JPopupMenuHelper.item(c.plusMenu(), "From computer…").doClick()
         assertEquals(listOf("shot.png", "spec.md"), c.strip().chipNames)
         assertEquals(1, c.attachments.images.size)
         assertEquals(1, c.attachments.files.size)

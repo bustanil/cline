@@ -242,7 +242,10 @@ class Composer(
     private val project: Project,
     private val store: () -> ChatStore?,
     private val onSubmit: (text: String, images: List<String>, files: List<String>) -> Unit,
-    private val chooseFiles: () -> List<File> = { pickFilesWithDialog(project) },
+    /** Lets the user pick files, starting in the given folder when there is one. Replaced in tests. */
+    private val chooseFiles: (startIn: File?) -> List<File> = { start -> pickFilesWithDialog(project, start) },
+    /** The image on the clipboard, if any. Replaced in tests. */
+    private val clipboardImage: () -> BufferedImage? = ::imageFromClipboard,
 ) : JPanel(BorderLayout()) {
     val attachments = Attachments()
 
@@ -261,8 +264,8 @@ class Composer(
     private val strip = AttachmentStrip(attachments) { updateSend() }
     private val plus = PillButton("+", { ChatColors.bubble }, round = true).apply {
         font = JBUI.Fonts.label().deriveFont(java.awt.Font.BOLD, JBUI.Fonts.label().size2D + 3f)
-        toolTipText = "Attach images or files"
-        addActionListener { attach() }
+        toolTipText = "Add"
+        addActionListener { showPlusMenu() }
     }
     val chip = PillButton("Model", { ChatColors.bubble }).apply {
         toolTipText = "Provider, model and effort"
@@ -370,8 +373,25 @@ class Composer(
         revalidate()
     }
 
-    private fun attach() {
-        addFiles(chooseFiles())
+    /** The menu the + button opens: Add files, with the ways to add them. */
+    internal fun plusMenu(): javax.swing.JPopupMenu = javax.swing.JPopupMenu().apply {
+        add(javax.swing.JMenu("Add files").apply {
+            add(javax.swing.JMenuItem("From computer…").apply { addActionListener { addFiles(chooseFiles(null)) } })
+            add(javax.swing.JMenuItem("From this project…").apply {
+                isEnabled = project.basePath != null
+                addActionListener { addFiles(chooseFiles(project.basePath?.let(::File))) }
+            })
+            add(javax.swing.JMenuItem("Image from clipboard").apply {
+                isEnabled = clipboardImage() != null
+                addActionListener { clipboardImage()?.let { addImage(it) } }
+            })
+        })
+    }
+
+    private fun showPlusMenu() {
+        val menu = plusMenu()
+        // Open it above the button: the composer sits at the bottom of the window.
+        menu.show(plus, 0, -menu.preferredSize.height - JBUI.scale(4))
     }
 
     /** Adds files the user chose or dropped, and reports the ones that were refused. */
@@ -480,7 +500,14 @@ class Composer(
                 .withTitle("Attach Images or Files")
                 .withExtensionFilter("Images and files", *(Attachments.IMAGE_EXTENSIONS + Attachments.FILE_EXTENSIONS).toTypedArray())
 
-        private fun pickFilesWithDialog(project: Project): List<File> =
-            FileChooser.chooseFiles(chooserDescriptor(), project, null).map { File(it.path) }
+        private fun pickFilesWithDialog(project: Project, startIn: File?): List<File> {
+            val start = startIn?.let { com.intellij.openapi.vfs.LocalFileSystem.getInstance().refreshAndFindFileByIoFile(it) }
+            return FileChooser.chooseFiles(chooserDescriptor(), project, start).map { File(it.path) }
+        }
+
+        private fun imageFromClipboard(): BufferedImage? = runCatching {
+            val contents = com.intellij.openapi.ide.CopyPasteManager.getInstance().getContents<java.awt.Image>(DataFlavor.imageFlavor) ?: return@runCatching null
+            if (contents is BufferedImage) contents else BufferedImage(contents.getWidth(null), contents.getHeight(null), BufferedImage.TYPE_INT_ARGB).also { b -> b.createGraphics().apply { drawImage(contents, 0, 0, null); dispose() } }
+        }.getOrNull()
     }
 }
