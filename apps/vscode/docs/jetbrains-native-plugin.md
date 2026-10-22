@@ -8,7 +8,8 @@ Facts below come from this repository as of commit `5dcfddc` (fork `bustanil/cli
 
 | Decision | Why |
 |---|---|
-| Native UI, not the webview | The webview depends on 93 `--vscode-*` CSS variables that JetBrains does not supply, which is why the official plugin looks off. Native components follow the IDE theme for free. |
+| Fully native UI, chat included, not the webview | The webview depends on 93 `--vscode-*` CSS variables that JetBrains does not supply, which is why the official plugin looks off. Native components follow the IDE theme for free. The webview chat (about 16,000 lines) is the reference implementation, so porting it is effort rather than risk. |
+| Unknown message kinds are drawn as plain text | Keeps the first version small (about a dozen kinds drawn properly) and means a kind added upstream degrades to text instead of breaking the chat. Port kinds one at a time when they matter. |
 | Reuse `cline-core` as is | All agent logic, storage (`~/.cline/data`), providers and tools already run there. The plugin is only the IDE side and the UI. |
 | Not ACP | Cline's ACP agent (`apps/cli/src/acp`) sends no diffs, no file locations, and refuses embedded snippets (`embeddedContext: false`), which are the features this plugin exists for. |
 | Commits go to `main` of the fork, no PRs | Per the owner. |
@@ -140,6 +141,19 @@ Not used by the core in this build: `diff.openDiff`, `replaceText`, `scrollDiff`
 - `"ask"` messages wait for the user.
 - `text` often holds JSON. For example, `say/ask "tool"` holds a `ClineSayTool`: `tool`, `path`, `diff`, `content`, `readLineStart`/`readLineEnd`, …
 
+**Which kinds the current core sends.** The type definitions list 54 kinds, but many are leftovers from Cline's older engine. A text search of `src/sdk` and the controller finds about 30. A kind sent through a variable could be missing, so treat the list as approximate.
+
+| Group | Kinds | First version |
+|---|---|---|
+| Questions (`ask`) | `tool`, `command`, `followup`, `completion_result`, `api_req_failed` | Draw properly, with the buttons from `buttonConfig.ts` |
+| | `resume_task`, `resume_completed_task`, `use_mcp_server`, `use_subagents` | Plain text + the buttons from `buttonConfig.ts` |
+| Messages (`say`) | `text`, `reasoning`, `task`, `user_feedback`, `tool`, `command`, `error`, `completion_result`, `api_req_started` (cost and progress) | Draw properly |
+| | `info`, `plan_completion_result`, `checkpoint_created`, `compaction`, `hook_status`, `task_progress`, `mcp_server_request_started`, `mcp_server_response`, `use_mcp_server`, `subagent`, `subagent_usage`, `use_subagents` | Plain text |
+| Tool types inside `tool` (`ClineSayTool.tool`) | `editedExistingFile`, `newFileCreated`, `fileDeleted`, `readFile` | Draw properly: path as a link (with lines for reads), diff for edits |
+| | `listFilesTopLevel`, `listFilesRecursive`, `listCodeDefinitionNames`, `searchFiles`, `webFetch`, `webSearch`, `summarizeTask`, `useSkill` | One line: tool + path or query |
+
+**Fallback rule.** Any `say`/`ask` kind or tool type the plugin doesn't know is drawn as plain text: the kind as a small label, then `text` (pretty-printed if it is JSON). For an unknown `ask`, still show the buttons `buttonConfig.ts` gives it. Never drop a message or throw.
+
 Port these before drawing rows:
 
 | Source (webview-ui/src unless noted) | Purpose |
@@ -188,7 +202,7 @@ All three are in the core and work in VS Code already. The plugin's part:
 ## Suggested order
 
 1. **Connection:** Gradle IntelliJ Platform project; health service plus `CoreConnectionService` with the token check; start `cline-core` and reach the `ready` reply. Test against a fake core that only sends `hello`, then the real one.
-2. **Minimal chat:** `getLatestState` + `subscribeToState` + `subscribeToPartialMessage` + the merging logic; send with `newTask`; show text messages. Implement `getWorkspacePaths`, `showMessage`, `getHostVersion` and the telemetry calls.
+2. **Minimal chat:** `getLatestState` + `subscribeToState` + `subscribeToPartialMessage` + the merging logic; send with `newTask`; draw every message with the plain-text fallback first, then the first-version kinds properly. Implement `getWorkspacePaths`, `showMessage`, `getHostVersion` and the telemetry calls.
 3. **Approvals:** `buttonConfig.ts` → two buttons + `askResponse`; Cancel button.
 4. **Navigation:** `showTextDocument` with selection; links in chat.
 5. **Snippets:** editor actions + intention.
