@@ -42,6 +42,19 @@ object Quote {
         return "[context] \n>  $q \n[/context] \n\n $text"
     }
 
+    private val block = Regex("""\[context]\s*(.*?)\s*\[/context]""", RegexOption.DOT_MATCHES_ALL)
+
+    /**
+     * Splits a sent message into the quotes it carries and the rest of its text. The quotes come back as plain
+     * text, with the `>` of the quoted line removed, so they can be drawn as quote cards instead of as markers.
+     */
+    fun split(text: String): Pair<List<String>, String> {
+        val quotes = block.findAll(text).map { match -> match.groupValues[1].lines().joinToString("\n") { it.trimStart().removePrefix(">").trim() }.trim() }.toList()
+        if (quotes.isEmpty()) return emptyList<String>() to text
+        val rest = block.replace(text, "\u0000").split("\u0000").map { it.trim() }.filter { it.isNotEmpty() }.joinToString("\n\n")
+        return quotes to rest
+    }
+
     /** The selected text with its edges trimmed; blank when there is nothing worth quoting. */
     fun clean(selected: String?): String = selected?.trim().orEmpty()
 

@@ -303,7 +303,7 @@ class ComposerTest : BasePlatformTestCase() {
         c.addQuote("a saved key should show as a masked field")
         c.input.text = "and keep the rest as is"
         Snapshots.save(c, "quote-cards", 520)
-        val popup = ReplyPopupPanel("provider dropdown prints the raw object", onSend = {}, onAddToComposer = { _ -> })
+        val popup = ReplyPopupPanel("provider dropdown prints the raw object", onAddToComposer = { _ -> })
         popup.background = ChatColors.card
         popup.isOpaque = true
         Snapshots.save(popup, "reply-popup", 340)

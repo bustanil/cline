@@ -19,9 +19,7 @@ class SelectionReplyTest : BasePlatformTestCase() {
 
     private class Recorder : QuoteActions {
         val added = mutableListOf<Pair<String, String>>()
-        val sent = mutableListOf<Pair<String, String>>()
         override fun addQuote(quote: String, reply: String) { added += quote to reply }
-        override fun sendReply(quote: String, text: String) { sent += quote to text }
     }
 
     private fun pane(text: String) = JBHtmlPane(JBHtmlPaneStyleConfiguration.builder().build(), JBHtmlPaneConfiguration.builder().build()).apply {
@@ -64,7 +62,7 @@ class SelectionReplyTest : BasePlatformTestCase() {
         assertTrue(presenter.hides >= 2)
     }
 
-    fun `test Enter in the popup sends the reply with the quote and an empty reply is not sent`() {
+    fun `test Enter in the popup adds the quote and the reply to the composer without sending`() {
         val pane = pane("quote this part of the answer")
         val actions = Recorder()
         val presenter = Presenter()
@@ -72,11 +70,10 @@ class SelectionReplyTest : BasePlatformTestCase() {
         selectWords(pane, "quote this")
         controller.maybeShow()
         val popup = presenter.shown!!
-        enter(popup)
-        assertTrue("an empty reply is not sent", actions.sent.isEmpty())
         popup.field.text = "  why?  "
         enter(popup)
-        assertEquals(listOf("quote this" to "why?"), actions.sent)
+        assertEquals(listOf("quote this" to "why?"), actions.added)
+        assertTrue("the popup closes", presenter.hides >= 1)
     }
 
     fun `test the add icon puts the quote in the composer instead of sending`() {
@@ -88,8 +85,7 @@ class SelectionReplyTest : BasePlatformTestCase() {
         controller.maybeShow()
         presenter.shown!!.addToComposer()
         assertEquals(listOf("this part" to ""), actions.added)
-        assertTrue(actions.sent.isEmpty())
-    }
+            }
 
     fun `test what was typed goes with the quote when it is added to the composer`() {
         val pane = pane("quote this part of the answer")

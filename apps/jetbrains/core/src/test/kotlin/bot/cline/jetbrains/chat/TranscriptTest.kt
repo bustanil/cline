@@ -280,3 +280,36 @@ class McpRowsTest {
         assertTrue(row.contains("wants to use") && row.contains("list_directory_tree"), row)
     }
 }
+
+class QuoteSplitTest {
+    @Test
+    fun `a sent quote and its reply are split apart`() {
+        val (quotes, rest) = Quote.split(Quote.format("project", "test"))
+        assertEquals(listOf("project"), quotes)
+        assertEquals("test", rest)
+    }
+
+    @Test
+    fun `several quotes and a plain message`() {
+        val text = Quote.context("one") + "\n\n" + Quote.format("two", "why?") + "\n\nmore"
+        val (quotes, rest) = Quote.split(text)
+        assertEquals(listOf("one", "two"), quotes)
+        assertEquals("why?\n\nmore", rest)
+        assertEquals(emptyList<String>() to "no quote", Quote.split("no quote"))
+    }
+
+    @Test
+    fun `a user bubble carries the quote as a card and not as markers`() {
+        val m = ChatMessage(
+            JsonObject().apply {
+                addProperty("ts", 1)
+                addProperty("type", "say")
+                addProperty("say", "user_feedback")
+                addProperty("text", Quote.format("project", "test"))
+            },
+        )
+        val view = RowRenderer.render(TranscriptItem.Single(m))
+        assertEquals(listOf("project"), view.quotes)
+        assertTrue(!view.html(emptyMap()).contains("[context]"))
+    }
+}

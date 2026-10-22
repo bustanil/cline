@@ -28,9 +28,6 @@ import javax.swing.text.JTextComponent
 interface QuoteActions {
     /** Puts the quote above the composer, with any [reply] already typed for it, to be sent with the next message. */
     fun addQuote(quote: String, reply: String = "")
-
-    /** Sends [text] now, with [quote] as its context. */
-    fun sendReply(quote: String, text: String)
 }
 
 /** A thin bar and the quoted words, cut to a few lines. Used in the popup and above the composer. */
@@ -46,12 +43,11 @@ internal fun quoteBlock(quote: String, maxChars: Int, widthPx: Int = 220): JComp
 }
 
 /**
- * What the popup over a selection holds: the quoted words and a box to reply in. Enter sends the reply with the
- * quote as context; the icon adds the quote to the composer instead, for a longer reply.
+ * What the popup over a selection holds: the quoted words and a box to reply in. Enter (or the icon) puts the
+ * quote and the reply in the composer, where the user can add more and send everything together.
  */
 class ReplyPopupPanel(
     private val quote: String,
-    private val onSend: (text: String) -> Unit,
     /** Gets what was typed in the box (it may be empty), so the quote card can show it. */
     private val onAddToComposer: (reply: String) -> Unit,
 ) : JPanel(BorderLayout(0, JBUI.scale(6))) {
@@ -64,13 +60,13 @@ class ReplyPopupPanel(
         val enter = KeyStroke.getKeyStroke(KeyEvent.VK_ENTER, 0)
         inputMap.put(enter, "cline.sendReply")
         actionMap.put("cline.sendReply", object : AbstractAction() {
-            override fun actionPerformed(e: ActionEvent?) = send()
+            override fun actionPerformed(e: ActionEvent?) = addToComposer()
         })
         addKeyListener(object : KeyAdapter() {
             override fun keyPressed(e: KeyEvent) {
                 if (e.keyCode == KeyEvent.VK_ENTER) {
                     e.consume()
-                    if (!e.isShiftDown) send()
+                    if (!e.isShiftDown) addToComposer()
                 }
             }
 
@@ -99,14 +95,8 @@ class ReplyPopupPanel(
         preferredSize = Dimension(JBUI.scale(300), super.getPreferredSize().height)
     }
 
-    /** An empty reply is not sent: the quote alone says nothing. */
-    fun send() {
-        val text = field.text.trim()
-        if (text.isNotEmpty()) onSend(text)
-    }
-
     /** Adds the quote to the composer along with what was typed so far. */
-    fun addToComposer() = onAddToComposer(field.text.trim())
+    fun addToComposer(): Unit = onAddToComposer(field.text.trim())
 }
 
 /** Shows the popup. Replaced in tests. */
@@ -158,7 +148,6 @@ class SelectionReplyController(
         val at = if (end != null) Point(end.x.toInt().coerceAtLeast(0), (end.y + end.height).toInt() + JBUI.scale(4)) else Point(0, pane.height)
         val content = ReplyPopupPanel(
             quote,
-            onSend = { text -> presenter.hide(); quotes.sendReply(quote, text) },
             onAddToComposer = { reply -> presenter.hide(); quotes.addQuote(quote, reply) },
         )
         presenter.show(content, pane, at)

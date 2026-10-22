@@ -183,8 +183,6 @@ class ChatPanel(private val project: Project) : JPanel(BorderLayout()), Disposab
             highlighter = IdeCodeHighlighter(project),
             quotes = object : QuoteActions {
                 override fun addQuote(quote: String, reply: String) = composer.addQuote(quote, reply)
-
-                override fun sendReply(quote: String, text: String) = report(store.send(bot.cline.jetbrains.chat.Quote.format(quote, text)))
             },
         )
         for ((index, item) in items.withIndex()) {

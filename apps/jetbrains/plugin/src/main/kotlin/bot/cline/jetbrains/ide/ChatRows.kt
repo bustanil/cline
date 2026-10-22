@@ -245,7 +245,7 @@ class HtmlRow(item: TranscriptItem, private val context: RowContext) : ChatRow {
             answers.removeAll()
             view.options.forEach { option -> answers.add(JButton(option).apply { addActionListener { context.reply(option) } }) }
         }
-        val shape = listOf(view.collapsedTitle, expanded, view.blocks != null, view.userBubble, view.options)
+        val shape = listOf(view.collapsedTitle, expanded, view.blocks != null, view.userBubble, view.options, view.quotes)
         if (shape != shownShape) layoutParts()
         // Ask the core only about paths not asked about yet; streaming text repeats them.
         for (reference in view.references) {
@@ -271,6 +271,17 @@ class HtmlRow(item: TranscriptItem, private val context: RowContext) : ChatRow {
             layout = BorderLayout()
             border = JBUI.Borders.empty(4, 6)
             add(content, BorderLayout.CENTER)
+            if (view.quotes.isNotEmpty()) {
+                add(
+                    JPanel().apply {
+                        layout = javax.swing.BoxLayout(this, javax.swing.BoxLayout.Y_AXIS)
+                        isOpaque = false
+                        border = JBUI.Borders.empty(2, 4, 4, 4)
+                        view.quotes.forEach { add(quoteBlock(it, 200, widthPx = 240).apply { alignmentX = 0f; border = JBUI.Borders.emptyBottom(4) }) }
+                    },
+                    BorderLayout.NORTH,
+                )
+            }
             if (view.attachments.isNotEmpty()) add(attachmentsOf(view.attachments), BorderLayout.SOUTH)
         })
     }.also { bubble = it }
@@ -307,7 +318,7 @@ class HtmlRow(item: TranscriptItem, private val context: RowContext) : ChatRow {
 
     private fun layoutParts() {
         layouts++
-        shownShape = listOf(view.collapsedTitle, expanded, view.blocks != null, view.userBubble, view.options)
+        shownShape = listOf(view.collapsedTitle, expanded, view.blocks != null, view.userBubble, view.options, view.quotes)
         panel.removeAll()
         val title = view.collapsedTitle
         if (title != null) {

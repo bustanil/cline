@@ -32,6 +32,8 @@ data class RowView(
     val userBubble: Boolean = false,
     /** The images and files that went with a prompt. */
     val attachments: List<Attachment> = emptyList(),
+    /** The quotes a sent prompt carried, drawn as cards above its text. */
+    val quotes: List<String> = emptyList(),
 )
 
 /**
@@ -52,8 +54,10 @@ object RowRenderer {
     private fun single(m: ChatMessage, c: RowColors, highlighter: CodeHighlighter?): RowView {
         val type = m.raw.str("type")
         return when {
-            m.isSay("task") -> markdown(null, m, c, highlighter).copy(userBubble = true, attachments = attachmentsOf(m))
-            m.isSay("user_feedback") -> markdown(null, m, c, highlighter).copy(userBubble = true, attachments = attachmentsOf(m))
+            m.isSay("task") || m.isSay("user_feedback") -> {
+                val (quotes, rest) = Quote.split(m.text())
+                markdown(null, if (quotes.isEmpty()) m else m.withText(rest), c, highlighter).copy(userBubble = true, attachments = attachmentsOf(m), quotes = quotes)
+            }
             m.isSay("text") || m.isSay("plan_completion_result") -> markdown(null, m, c, highlighter)
             m.isSay("reasoning") -> markdown(null, m, c, highlighter).copy(collapsedTitle = "Thinking")
             m.isSay("completion_result") || m.isAsk("completion_result") -> markdown("✓ Task completed", m, c, highlighter)
