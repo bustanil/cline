@@ -105,6 +105,35 @@ class SettingsPanelsTest : BasePlatformTestCase() {
         assertTrue(order.indexOf("writeProviderConfig") < order.indexOf("commitModelSelection"))
     }
 
+    fun `test the provider list shows names and a saved key shows as dots`() {
+        val core = Canned()
+        val panel = ModelPanel(store(core))
+        settle()
+        assertEquals(listOf("Anthropic", "OpenRouter"), (0 until panel.providerCount()).map { panel.providerLabel(it) })
+        assertEquals("anthropic", panel.chosenProvider?.id)
+        assertEquals("•".repeat(11), panel.keyFieldText)
+        assertTrue(panel.noteText, panel.noteText.contains("11 characters") && panel.noteText.contains("replace"))
+    }
+
+    fun `test applying with the dots untouched does not send the key and a typed key replaces it`() {
+        val core = Canned()
+        val panel = ModelPanel(store(core))
+        settle()
+        panel.apply().get(); settle()
+        assertTrue("the saved key must not be overwritten by the dots", core.calls.none { it.second == "writeProviderConfig" })
+        panel.setApiKey("sk-new-secret")
+        panel.apply().get(); settle()
+        assertEquals("sk-new-secret", core.body("writeProviderConfig").getAsJsonObject("patch").get("apiKey").asString)
+    }
+
+    fun `test a provider with no saved key has an empty field`() {
+        val core = Canned()
+        val panel = ModelPanel(store(core))
+        settle()
+        panel.chooseProvider("openrouter"); settle()
+        assertEquals("", panel.keyFieldText)
+    }
+
     fun `test a provider whose models cannot be listed asks for a typed model id and an empty key is not saved`() {
         val core = Canned()
         val panel = ModelPanel(store(core))

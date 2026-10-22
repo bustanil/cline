@@ -246,9 +246,11 @@ class ComposerTest : BasePlatformTestCase() {
     }
 
     fun `test the popup fits inside the tool window`() {
-        assertEquals(com.intellij.util.ui.JBUI.scale(340), ModelPopup.widthFor(com.intellij.util.ui.JBUI.scale(356)))
-        assertEquals(com.intellij.util.ui.JBUI.scale(240), ModelPopup.widthFor(com.intellij.util.ui.JBUI.scale(200)))
-        assertEquals(com.intellij.util.ui.JBUI.scale(420), ModelPopup.widthFor(com.intellij.util.ui.JBUI.scale(900)))
+        val scale = com.intellij.util.ui.JBUI::scale
+        assertEquals(scale(300), ModelPopup.widthFor(scale(356)))
+        assertEquals(scale(240), ModelPopup.widthFor(scale(200)))
+        assertEquals("a wide window does not widen it", scale(300), ModelPopup.widthFor(scale(1400)))
+        assertEquals(scale(284), ModelPopup.widthFor(scale(300)))
     }
 
     fun `test a narrow chip is squeezed with an ellipsis and never overlaps the plus`() {

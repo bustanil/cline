@@ -19,9 +19,26 @@ import javax.swing.JPanel
 /** Chooses the provider and model for the current mode, and stores an API key for the provider. */
 class ModelPanel(private val store: ChatStore) : JPanel(BorderLayout()) {
     private val mode = store.mode
-    private val provider = ComboBox<ProviderOption>()
+    private val provider = ComboBox<ProviderOption>().apply {
+        // The provider's name, not the object's text.
+        renderer = object : com.intellij.ui.ColoredListCellRenderer<ProviderOption>() {
+            override fun customizeCellRenderer(list: javax.swing.JList<out ProviderOption>, value: ProviderOption?, index: Int, selected: Boolean, hasFocus: Boolean) {
+                append(value?.name ?: "")
+            }
+        }
+    }
     private val model = ComboBox<Any>().apply { isEditable = true }
-    private val key = JBPasswordField()
+    private val key: JBPasswordField = JBPasswordField().apply {
+        // A saved key shows as dots; typing replaces them all.
+        addFocusListener(object : java.awt.event.FocusAdapter() {
+            override fun focusGained(e: java.awt.event.FocusEvent) {
+                if (isMasked()) selectAll()
+            }
+        })
+    }
+
+    /** The dots shown for a saved key, or empty when none is saved. Compared to the field to tell if the user typed. */
+    private var maskText = ""
     private val note = JBLabel().apply { border = JBUI.Borders.emptyTop(6) }
     private var providers: List<ProviderOption> = emptyList()
     private var generation = 0
@@ -71,13 +88,22 @@ class ModelPanel(private val store: ChatStore) : JPanel(BorderLayout()) {
                     model.model = DefaultComboBoxModel<Any>(list.models.toTypedArray<Any>())
                     val wanted = previous?.takeIf { id -> list.models.any { it.id == id } } ?: list.defaultModelId ?: selected.defaultModelId
                     list.models.firstOrNull { it.id == wanted }?.let { model.selectedItem = it } ?: wanted?.let { model.selectedItem = it }
+                    showSavedKey(keyLength)
                     note.text = when {
                         !list.ok -> "Models could not be listed: ${list.error ?: "unknown error"}. Type a model id."
-                        keyLength > 0 -> "An API key is saved ($keyLength characters). Leave the field empty to keep it."
+                        keyLength > 0 -> "An API key is saved ($keyLength characters). Type a new one to replace it."
                         else -> "No API key is saved for this provider."
                     }
                 }, ModalityState.any())
             }
+    }
+
+    private fun isMasked() = maskText.isNotEmpty() && String(key.password) == maskText
+
+    /** Shows [length] dots for a saved key, or an empty field when there is none. */
+    private fun showSavedKey(length: Int) {
+        maskText = if (length > 0) "•".repeat(length.coerceAtMost(40)) else ""
+        key.text = maskText
     }
 
     val chosenProvider: ProviderOption? get() = provider.selectedItem as? ProviderOption
@@ -88,6 +114,15 @@ class ModelPanel(private val store: ChatStore) : JPanel(BorderLayout()) {
     internal fun setApiKey(text: String) {
         key.text = text
     }
+
+    internal val keyFieldText: String get() = String(key.password)
+
+    internal fun providerLabel(index: Int): String {
+        val component = provider.renderer.getListCellRendererComponent(javax.swing.JList(), provider.getItemAt(index), index, false, false)
+        return (component as com.intellij.ui.SimpleColoredComponent).toString()
+    }
+
+    internal fun providerCount(): Int = provider.itemCount
 
     internal fun chooseProvider(id: String) {
         provider.selectedItem = providers.first { it.id == id }
@@ -103,7 +138,8 @@ class ModelPanel(private val store: ChatStore) : JPanel(BorderLayout()) {
     fun apply(): CompletableFuture<*> {
         val chosen = chosenProvider ?: return CompletableFuture.completedFuture(null)
         val modelId = chosenModelId ?: chosen.defaultModelId ?: return CompletableFuture.completedFuture(null)
-        val typedKey = String(key.password).trim()
+        // The dots stand for the saved key; only a key the user typed is sent.
+        val typedKey = if (isMasked()) "" else String(key.password).trim()
         val saveKey = if (typedKey.isNotEmpty()) store.models.saveApiKey(chosen.id, typedKey) else CompletableFuture.completedFuture("{}")
         return saveKey.thenCompose { store.models.select(chosen.id, mode, modelId) }
     }

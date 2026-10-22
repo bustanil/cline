@@ -270,8 +270,8 @@ internal object SwingUtilitiesAncestor {
 }
 
 object ModelPopup {
-    /** As wide as the composer it opens from, less a small margin, but not narrower than 240 or wider than 420 (logical pixels). */
-    fun widthFor(composerWidth: Int): Int = (composerWidth - JBUI.scale(16)).coerceIn(JBUI.scale(240), JBUI.scale(420))
+    /** 300 logical pixels, less when the composer is narrower; never under 240. It does not stretch with a wide window. */
+    fun widthFor(composerWidth: Int): Int = (composerWidth - JBUI.scale(16)).coerceIn(JBUI.scale(240), JBUI.scale(300))
 
     /** Opens the popup above [anchor]. [onChanged] runs after a model or an effort was chosen. */
     fun show(project: Project, store: ChatStore, anchor: JComponent, onChanged: () -> Unit): JBPopup {
@@ -295,8 +295,12 @@ object ModelPopup {
             .setRequestFocus(true).setFocusable(true).setCancelOnClickOutside(true).setResizable(false).setMovable(false)
             .createPopup()
         val size = panel.preferredSize
-        // Line up with the composer's left edge so the popup stays over the tool window, not the editor.
-        val left = composer?.let { javax.swing.SwingUtilities.convertPoint(it, JBUI.scale(8), 0, anchor).x } ?: (anchor.width - size.width)
+        // Line up with the model label, and slide left if that would run past the composer's right edge.
+        val left = if (composer == null) 0 else {
+            val labelX = javax.swing.SwingUtilities.convertPoint(anchor, 0, 0, composer).x
+            val x = minOf(labelX, composer.width - size.width - JBUI.scale(8)).coerceAtLeast(JBUI.scale(8))
+            x - labelX
+        }
         popup.show(RelativePoint(anchor, Point(left, -size.height - JBUI.scale(6))))
         return popup
     }
