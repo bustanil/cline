@@ -167,3 +167,37 @@ class PlanActTest {
         assertEquals("ACT", JsonParser.parseString(call.third).asJsonObject.get("mode").asString)
     }
 }
+
+class AutoApprovalTest {
+    private val state = """{"epoch":1,"stateVersion":1,"clineMessages":[],"autoApprovalSettings":{"version":3,"enabled":true,"actions":{"readFiles":true,"readFilesExternally":true,"editFiles":true,"editFilesExternally":false,"executeSafeCommands":false,"executeAllCommands":true,"useBrowser":true,"useMcp":true},"enableNotifications":false}}"""
+
+    @Test
+    fun `the summary names the main actions that are on and skips the extras`() {
+        val settings = AutoApproval.parse(JsonParser.parseString(state).asJsonObject)!!
+        assertEquals("Read, Edit, Web Fetch, MCP", AutoApproval.summary(settings))
+        assertEquals("None", AutoApproval.summary(AutoApprovalSettings(1, emptyMap(), false)))
+        assertEquals("None", AutoApproval.summary(null))
+        assertEquals("Commands", AutoApproval.summary(AutoApprovalSettings(1, mapOf("executeSafeCommands" to true), false)))
+    }
+
+    @Test
+    fun `a change sends every action with the next version`() {
+        val core = FakeCore().apply { latestState = Gson().toJson(mapOf("stateJson" to state)) }
+        val store = ChatStore(core).also { it.start().get() }
+        store.setAutoApproval("executeSafeCommands", true).get()
+        val call = core.calls.last()
+        assertEquals("cline.StateService" to "updateAutoApprovalSettings", call.first to call.second)
+        val body = JsonParser.parseString(call.third).asJsonObject
+        assertEquals(4, body.get("version").asInt)
+        val actions = body.getAsJsonObject("actions")
+        assertEquals(AutoApproval.ACTIONS.map { it.id }.toSet(), actions.keySet())
+        assertTrue(actions.get("executeSafeCommands").asBoolean)
+        assertFalse(actions.get("editFilesExternally").asBoolean)
+        assertTrue(actions.get("readFiles").asBoolean)
+    }
+
+    @Test
+    fun `the extras name the action they widen`() {
+        for (extra in AutoApproval.ACTIONS.filter { it.shortName == null }) assertTrue(AutoApproval.ACTIONS.any { it.id == extra.parent })
+    }
+}

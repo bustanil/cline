@@ -163,6 +163,37 @@ class ComposerTest : BasePlatformTestCase() {
         assertTrue(sent.isEmpty())
     }
 
+    fun `test the at button puts an at sign in the box and spaces it after a word`() {
+        val c = composer()
+        c.atButton().doClick()
+        assertEquals("@", c.input.text)
+        c.input.text = "look"
+        c.input.caretPosition = 4
+        c.atButton().doClick()
+        assertEquals("look @", c.input.text)
+    }
+
+    fun `test the mode switch shows the core's mode and choosing sends it`() {
+        val core = ModelPopupTest.PlanCore("plan")
+        val store = bot.cline.jetbrains.chat.ChatStore(core).also { it.start().get() }
+        val c = Composer(project, store = { store }, onSubmit = { _, _, _ -> }, clipboardImage = { null })
+        c.update(true)
+        assertEquals("Plan", c.modeToggle.selected)
+        c.modeToggle.choose("Act")
+        val call = core.calls.last()
+        assertEquals("togglePlanActModeProto", call.second)
+        assertEquals("ACT", com.google.gson.JsonParser.parseString(call.third).asJsonObject.get("mode").asString)
+        assertEquals("Act", c.modeToggle.selected)
+    }
+
+    fun `test the switch cannot be used while disconnected and showing a mode does not send`() {
+        val c = Composer(project, store = { null }, onSubmit = { _, _, _ -> }, clipboardImage = { null })
+        c.update(false)
+        assertFalse(c.modeToggle.isEnabled)
+        c.modeToggle.show("Plan")
+        assertEquals("Plan", c.modeToggle.selected)
+    }
+
     fun `test the buttons keep a small fixed size whatever the IDE button style says`() {
         val c = composer()
         val plus = c.findPlus()

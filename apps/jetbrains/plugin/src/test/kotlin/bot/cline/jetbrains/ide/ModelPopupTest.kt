@@ -12,6 +12,19 @@ import com.intellij.util.ui.UIUtil
 import java.util.concurrent.CompletableFuture
 
 class ModelPopupTest : BasePlatformTestCase() {
+    /** A core in the given mode that records calls. */
+    class PlanCore(mode: String) : CoreApi {
+        val calls = mutableListOf<Triple<String, String, String>>()
+        private val state = Gson().toJson(mapOf("stateJson" to """{"mode":"$mode","epoch":1,"stateVersion":1,"clineMessages":[]}"""))
+
+        override fun call(service: String, method: String, messageJson: String): CompletableFuture<String> {
+            calls += Triple(service, method, messageJson)
+            return CompletableFuture.completedFuture(if (method == "getLatestState") state else "{}")
+        }
+
+        override fun subscribe(service: String, method: String, messageJson: String, onMessage: (String) -> Unit, onClose: (Throwable?) -> Unit) = Subscription {}
+    }
+
     private class Core : CoreApi {
         val calls = mutableListOf<Triple<String, String, String>>()
         val state = Gson().toJson(mapOf("stateJson" to """{"mode":"act","epoch":1,"stateVersion":1,"clineMessages":[],"apiConfiguration":{"actModeApiProvider":"anthropic","actModeApiModelId":"claude-sonnet-5"}}"""))
@@ -97,14 +110,14 @@ class ModelPopupTest : BasePlatformTestCase() {
         Snapshots.save(p, "model-popup", 420)
     }
 
-    fun `test the composer chip shows the model its context and the remembered effort`() {
+    fun `test the composer shows the model as provider and model`() {
         ClineSettings.getInstance().rememberEffort("anthropic", "medium")
         try {
             val store = ChatStore(core).also { it.start().get() }
             val composer = Composer(project, store = { store }, onSubmit = { _, _, _ -> })
             composer.update(true); settle()
             composer.update(true)
-            assertEquals("Claude Sonnet 5  1M  Medium  ⌃", composer.chipText)
+            assertEquals("anthropic:claude-sonnet-5", composer.chipText)
             assertTrue(composer.attachments.imagesAllowed)
         } finally {
             ClineSettings.getInstance().state.efforts.clear()

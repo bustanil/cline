@@ -99,6 +99,19 @@ class RealCoreSmokeTest {
             // Put Plan/Act back so the task below runs the way the earlier checks assume.
             settings.setMode("act").get(30, TimeUnit.SECONDS)
 
+            // Auto-approve settings round-trip through the core.
+            val approvals = bot.cline.jetbrains.chat.ChatStore(core!!)
+            approvals.start().get(60, TimeUnit.SECONDS)
+            val before = approvals.autoApproval
+            assertTrue(before != null && before.isOn("readFiles"), "settings: $before")
+            approvals.setAutoApproval("useBrowser", false).get(30, TimeUnit.SECONDS)
+            val deadlineB = System.currentTimeMillis() + 30_000
+            while (System.currentTimeMillis() < deadlineB && approvals.autoApproval?.isOn("useBrowser") != false) Thread.sleep(100)
+            assertTrue(approvals.autoApproval?.isOn("useBrowser") == false, "browser should be off: ${approvals.autoApproval}")
+            println("APPROVAL: " + bot.cline.jetbrains.chat.AutoApproval.summary(approvals.autoApproval))
+            approvals.setAutoApproval("useBrowser", true).get(30, TimeUnit.SECONDS)
+            approvals.stop()
+
             // A task with no provider credential fails, and the failure must reach the transcript.
             val store = bot.cline.jetbrains.chat.ChatStore(core!!)
             store.start().get(60, TimeUnit.SECONDS)

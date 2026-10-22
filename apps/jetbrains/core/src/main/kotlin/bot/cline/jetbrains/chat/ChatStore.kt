@@ -40,6 +40,15 @@ class ChatStore(private val core: CoreApi) {
     val mode: String
         get() = snapshot.extensionState.get("mode")?.takeIf { it.isJsonPrimitive }?.asString ?: "act"
 
+    /** What the agent may do without asking, from the latest state. */
+    val autoApproval: AutoApprovalSettings? get() = AutoApproval.parse(snapshot.extensionState)
+
+    /** Allows or forbids one action without asking. */
+    fun setAutoApproval(actionId: String, on: Boolean): CompletableFuture<String> {
+        val current = autoApproval ?: AutoApprovalSettings(1, emptyMap(), false)
+        return core.call("cline.StateService", "updateAutoApprovalSettings", AutoApproval.requestJson(current.with(actionId, on)))
+    }
+
     /** Switches between Plan and Act. */
     fun setMode(mode: String): CompletableFuture<String> =
         core.call("cline.StateService", "togglePlanActModeProto", JsonObject().apply { addProperty("mode", mode.uppercase()) }.toString())

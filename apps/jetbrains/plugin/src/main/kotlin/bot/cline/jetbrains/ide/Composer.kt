@@ -137,7 +137,10 @@ class PillButton(text: String, private val fill: () -> Color, private val round:
         try {
             g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON)
             g2.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON)
-            g2.color = shade(fill(), if (!isEnabled) 1.0 else if (pressed) 0.9 else if (hover) 0.96 else 1.0)
+            val base = fill()
+            // A button with no fill shows a faint tint under the pointer; one with a fill gets a little darker.
+            g2.color = if (base.alpha == 0) (if (isEnabled && (hover || pressed)) Color(0, 0, 0, if (pressed) 36 else 20) else base)
+            else shade(base, if (!isEnabled) 1.0 else if (pressed) 0.9 else if (hover) 0.96 else 1.0)
             val arc = if (round) minOf(width, height) else JBUI.scale(12)
             g2.fillRoundRect(0, 0, width, height, arc, arc)
             g2.font = font
@@ -164,6 +167,34 @@ class ShrinkRightLayout : java.awt.LayoutManager {
         val width = minOf(child.preferredSize.width, available)
         val height = child.preferredSize.height
         child.setBounds(insets.left + available - width, insets.top + ((parent.height - insets.top - insets.bottom - height) / 2).coerceAtLeast(0), width, height)
+    }
+
+    override fun preferredLayoutSize(parent: java.awt.Container): Dimension {
+        val child = parent.components.firstOrNull() ?: return Dimension()
+        val insets = parent.insets
+        return Dimension(child.preferredSize.width + insets.left + insets.right, child.preferredSize.height + insets.top + insets.bottom)
+    }
+
+    override fun minimumLayoutSize(parent: java.awt.Container): Dimension {
+        val child = parent.components.firstOrNull() ?: return Dimension()
+        val insets = parent.insets
+        return Dimension(child.minimumSize.width + insets.left + insets.right, child.minimumSize.height + insets.top + insets.bottom)
+    }
+}
+
+/** Puts its one child at the left edge, at its preferred width, or narrower when there is not room. */
+class ShrinkLeftLayout : java.awt.LayoutManager {
+    override fun addLayoutComponent(name: String?, comp: java.awt.Component?) {}
+
+    override fun removeLayoutComponent(comp: java.awt.Component?) {}
+
+    override fun layoutContainer(parent: java.awt.Container) {
+        val child = parent.components.firstOrNull() ?: return
+        val insets = parent.insets
+        val available = (parent.width - insets.left - insets.right).coerceAtLeast(0)
+        val width = minOf(child.preferredSize.width, available)
+        val height = child.preferredSize.height
+        child.setBounds(insets.left, insets.top + ((parent.height - insets.top - insets.bottom - height) / 2).coerceAtLeast(0), width, height)
     }
 
     override fun preferredLayoutSize(parent: java.awt.Container): Dimension {
@@ -262,20 +293,31 @@ class Composer(
         emptyText.text = "Message or run a task, @ for files"
     }
     private val strip = AttachmentStrip(attachments) { updateSend() }
-    private val plus = PillButton("+", { ChatColors.bubble }, round = true).apply {
+    private val clear = Color(0, 0, 0, 0)
+    private val at = PillButton("@", { clear }, round = true).apply {
+        font = JBUI.Fonts.label().deriveFont(java.awt.Font.BOLD, JBUI.Fonts.label().size2D + 1f)
+        toolTipText = "Add a file or folder as context"
+        addActionListener { insertAt() }
+    }
+    private val plus = PillButton("+", { clear }, round = true).apply {
         font = JBUI.Fonts.label().deriveFont(java.awt.Font.BOLD, JBUI.Fonts.label().size2D + 3f)
         toolTipText = "Add"
         addActionListener { showPlusMenu() }
     }
-    val chip = PillButton("Model", { ChatColors.bubble }).apply {
+    /** The model as `provider:model`. Click it for the provider, model and effort. */
+    val chip = PillButton("Model", { clear }, textColor = { UIUtil.getContextHelpForeground() }).apply {
         toolTipText = "Provider, model and effort"
         addActionListener { showModelPopup() }
     }
-    private val send = PillButton("↑", { if (isSendReady()) JBColor(0x6B8DF0, 0x5B7FEA) else JBColor(0xBFCCF7, 0x3C4A78) }, round = true, textColor = { Color.WHITE }).apply {
-        font = JBUI.Fonts.label().deriveFont(java.awt.Font.BOLD, JBUI.Fonts.label().size2D + 2f)
-        toolTipText = "Send"
-        addActionListener { submit() }
-    }
+    private val send = PaperPlaneButton { submit() }
+
+    /** Plan: Cline plans and does not edit. Act: Cline makes the changes. */
+    val modeToggle = SegmentedToggle(
+        listOf("Plan", "Act"),
+        accent = { if (it == "Plan") JBColor(0xE0B23A, 0xC9A130) else JBColor(0x6B8DF0, 0x5B7FEA) },
+        initial = "Act",
+        onSelect = { choice -> store()?.setMode(choice.lowercase())?.whenComplete { _, error -> if (error != null) ApplicationManager.getApplication().invokeLater({ say("Could not switch mode: " + (error.cause?.message ?: error.message)) }, ModalityState.any()) } },
+    )
     private val status = JBLabel().apply {
         foreground = UIUtil.getContextHelpForeground()
         border = JBUI.Borders.empty(2, 12)
@@ -288,17 +330,25 @@ class Composer(
     init {
         isOpaque = false
         border = JBUI.Borders.empty(6, 10)
+        // Bottom row, as in the VS Code client: @ and + on the left, the model after them, Plan/Act on the right.
+        val left = JPanel(FlowLayout(FlowLayout.LEFT, 2, 0)).apply { isOpaque = false; add(at); add(plus) }
         val bottom = JPanel(BorderLayout()).apply {
             isOpaque = false
-            border = JBUI.Borders.empty(2, 8, 8, 8)
-            add(plus, BorderLayout.WEST)
-            add(send, BorderLayout.EAST)
-            // The chip can shrink, so in a narrow window it loses its text before the buttons lose their room.
-            add(JPanel(ShrinkRightLayout()).apply { isOpaque = false; border = JBUI.Borders.empty(0, 8); add(chip) }, BorderLayout.CENTER)
+            border = JBUI.Borders.empty(2, 8, 8, 10)
+            add(left, BorderLayout.WEST)
+            // The model label can shrink, so in a narrow window it loses its text before the other controls lose their room.
+            add(JPanel(ShrinkLeftLayout()).apply { isOpaque = false; border = JBUI.Borders.empty(0, 6); add(chip) }, BorderLayout.CENTER)
+            add(JPanel(FlowLayout(FlowLayout.RIGHT, 0, 0)).apply { isOpaque = false; add(modeToggle) }, BorderLayout.EAST)
+        }
+        // The paper plane sits at the lower right of the text box.
+        val inputArea = JPanel(BorderLayout()).apply {
+            isOpaque = false
+            add(JBScrollPane(input).apply { border = JBUI.Borders.empty(); isOpaque = false; viewport.isOpaque = false }, BorderLayout.CENTER)
+            add(JPanel(BorderLayout()).apply { isOpaque = false; border = JBUI.Borders.empty(0, 0, 4, 8); add(send, BorderLayout.SOUTH) }, BorderLayout.EAST)
         }
         val card = CardPanel(ChatColors.card, ChatColors.border).apply {
             add(strip, BorderLayout.NORTH)
-            add(JBScrollPane(input).apply { border = JBUI.Borders.empty(); isOpaque = false; viewport.isOpaque = false }, BorderLayout.CENTER)
+            add(inputArea, BorderLayout.CENTER)
             add(bottom, BorderLayout.SOUTH)
         }
         add(card, BorderLayout.CENTER)
@@ -328,15 +378,28 @@ class Composer(
         send.repaint()
     }
 
+    /** Puts an @ at the caret, which opens the file suggestions. */
+    private fun insertAt() {
+        input.requestFocusInWindow()
+        val position = input.caretPosition
+        val before = input.text.getOrNull(position - 1)
+        // An @ after a word would be part of it; give it a space first.
+        val text = if (before != null && !before.isWhitespace()) " @" else "@"
+        input.insert(text, position)
+    }
+
     /** Tells the composer whether the core is connected, what the model is, and whether it takes images. */
     fun update(connected: Boolean) {
         this.connected = connected
         input.isEnabled = connected
+        at.isEnabled = connected
         plus.isEnabled = connected
         chip.isEnabled = connected
+        modeToggle.isEnabled = connected
         updateSend()
         val current = store() ?: return
         val mode = current.mode
+        modeToggle.show(mode.replaceFirstChar { it.uppercase() })
         val selection = ModelSettings.current(current.snapshot.extensionState, mode)
         val provider = selection.providerId
         val key = "$provider/$mode/${selection.modelId}"
@@ -356,12 +419,9 @@ class Composer(
     }
 
     private fun refreshChip(providerId: String?, modelId: String?) {
-        val d = details
-        val name = d?.name?.takeIf { it.isNotBlank() } ?: modelId?.substringAfterLast('/') ?: "Model"
-        val effort = providerId?.let { ClineSettings.getInstance().effortFor(it) }?.let { bot.cline.jetbrains.chat.ReasoningEffort.fromWire(it)?.label }
-        val context = d?.contextWindow?.let { bot.cline.jetbrains.chat.ModelOption("", null, it).contextLabel }.orEmpty()
-        chip.text = listOf(name, context, effort).filterNot { it.isNullOrEmpty() }.joinToString("  ") + "  ⌃"
-        chip.toolTipText = listOfNotNull(providerId, modelId).joinToString(" · ").ifEmpty { "Provider, model and effort" }
+        // `provider:model`, as the VS Code client shows it. The popup has the name, context size and effort.
+        chip.text = if (providerId != null && modelId != null) "$providerId:$modelId" else "Choose a model"
+        chip.toolTipText = "Provider, model and effort"
         chip.revalidate()
         chip.repaint()
     }
@@ -489,7 +549,9 @@ class Composer(
 
     internal fun submitForTest() = submit()
 
-    internal fun sendButton(): PillButton = send
+    internal fun sendButton(): PaperPlaneButton = send
+
+    internal fun atButton(): PillButton = at
 
     internal val sendEnabled: Boolean get() = send.isEnabled
 

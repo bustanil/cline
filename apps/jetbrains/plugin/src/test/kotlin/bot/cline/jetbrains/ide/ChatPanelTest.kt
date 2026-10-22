@@ -43,7 +43,7 @@ class ChatPanelTest : BasePlatformTestCase() {
         UIUtil.dispatchAllInvocationEvents()
         val labels = panel.all(JLabel::class.java).map { it.text.orEmpty() }
         assertTrue(labels.toString(), labels.any { it.contains("cline-core.js was not found") })
-        assertFalse(panel.all(PillButton::class.java).first { it.text == "↑" }.isEnabled)
+        assertFalse(panel.all(PaperPlaneButton::class.java).single().isEnabled)
         panel.dispose()
     }
 
@@ -67,21 +67,21 @@ class ChatPanelTest : BasePlatformTestCase() {
         println("ROWS: " + rows.map { it.replace(Regex("<[^>]+>"), " ").replace(Regex("\\s+"), " ").trim().take(60) })
         assertTrue(rows.toString(), rows.any { it.contains("say hello") })
         assertTrue("the failure should show as an error row: $rows", rows.any { it.contains("Error") })
-        // The toolbar follows the core: Plan/Act and the model button.
-        val toggles = panel.all(javax.swing.JToggleButton::class.java)
-        val plan = toggles.first { it.text == "Plan" }
-        val act = toggles.first { it.text == "Act" }
-        assertTrue("Act should start selected", act.isSelected)
-        plan.doClick()
-        assertTrue("mode never switched to plan", pump(30_000) { service.store?.mode == "plan" && plan.isSelected })
-        act.doClick()
-        assertTrue("mode never switched back to act", pump(30_000) { service.store?.mode == "act" && act.isSelected })
+        // Plan/Act is a switch at the bottom of the composer and follows the core.
+        val toggle = panel.all(SegmentedToggle::class.java).single()
+        assertEquals("Act", toggle.selected)
+        toggle.choose("Plan")
+        assertTrue("mode never switched to plan", pump(30_000) { service.store?.mode == "plan" })
+        toggle.choose("Act")
+        assertTrue("mode never switched back to act", pump(30_000) { service.store?.mode == "act" && toggle.selected == "Act" })
+        // The old toolbar buttons are gone; New chat and History are in the window's title bar.
+        assertTrue(panel.all(JButton::class.java).none { it.text == "History" || it.text == "New chat" })
         val modelPanel = ModelPanel(service.store!!)
         assertTrue("providers never loaded", pump(30_000) { modelPanel.chosenProvider != null })
         modelPanel.chooseProvider("anthropic")
         modelPanel.chooseModel("claude-sonnet-5")
         modelPanel.apply().get(30, java.util.concurrent.TimeUnit.SECONDS)
-        assertTrue("the model chip never showed the new model", pump(30_000) { panel.all(PillButton::class.java).any { it.text.contains("Claude Sonnet 5") } })
+        assertTrue("the model label never showed the new model", pump(30_000) { panel.all(PillButton::class.java).any { it.text == "anthropic:claude-sonnet-5" } })
         // Leave a provider with no key behind, as the core's defaults expect.
         service.store!!.models.select("openrouter", "act", "anthropic/claude-sonnet-5.5").get(30, java.util.concurrent.TimeUnit.SECONDS)
         panel.dispose()

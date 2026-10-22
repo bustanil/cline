@@ -10,7 +10,6 @@ import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.application.ModalityState
 import com.intellij.openapi.options.ShowSettingsUtil
-import com.intellij.openapi.ui.DialogWrapper
 import com.intellij.openapi.project.Project
 import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBScrollPane
@@ -51,10 +50,7 @@ class ChatPanel(private val project: Project) : JPanel(BorderLayout()), Disposab
     }
     private val primary = JButton().apply { addActionListener { run(Slot.PRIMARY) } }
     private val secondary = JButton().apply { addActionListener { run(Slot.SECONDARY) } }
-    private val newChat = JButton("New chat").apply { addActionListener { service.store?.let { report(it.clearTask()) } } }
-    private val historyButton = JButton("History").apply { addActionListener { showHistory() } }
-    private val planButton = javax.swing.JToggleButton("Plan").apply { addActionListener { service.store?.let { report(it.setMode("plan")) } } }
-    private val actButton = javax.swing.JToggleButton("Act").apply { addActionListener { service.store?.let { report(it.setMode("act")) } } }
+    private val approve = AutoApproveBar { service.store }
     private val changed = ChangedFilesPanel(project, store = { service.store })
     private var lastPhase: String? = null
     private var shownStore: ChatStore? = null
@@ -75,16 +71,7 @@ class ChatPanel(private val project: Project) : JPanel(BorderLayout()), Disposab
 
     init {
         val top = JPanel(BorderLayout()).apply {
-            add(
-                JPanel(BorderLayout()).apply {
-                    add(JPanel(FlowLayout(FlowLayout.LEFT, 4, 2)).apply {
-                        val modes = javax.swing.ButtonGroup().apply { add(planButton); add(actButton) }
-                        add(newChat); add(historyButton); add(planButton); add(actButton)
-                    }, BorderLayout.NORTH)
-                    add(JPanel(FlowLayout(FlowLayout.LEFT)).apply { add(notice); add(settingsButton) }, BorderLayout.CENTER)
-                },
-                BorderLayout.CENTER,
-            )
+            add(JPanel(FlowLayout(FlowLayout.LEFT)).apply { add(notice); add(settingsButton) }, BorderLayout.CENTER)
             add(metrics, BorderLayout.SOUTH)
         }
         val buttons = JPanel(FlowLayout(FlowLayout.LEFT)).apply { add(primary); add(secondary) }
@@ -93,7 +80,7 @@ class ChatPanel(private val project: Project) : JPanel(BorderLayout()), Disposab
             background = ChatColors.page
             isOpaque = true
             add(JPanel(BorderLayout()).apply { isOpaque = false; border = JBUI.Borders.empty(6, 10, 0, 10); add(changed, BorderLayout.NORTH); add(buttons, BorderLayout.CENTER) }, BorderLayout.NORTH)
-            add(composer, BorderLayout.CENTER)
+            add(JPanel(BorderLayout()).apply { isOpaque = false; add(approve, BorderLayout.NORTH); add(composer, BorderLayout.CENTER) }, BorderLayout.CENTER)
         }
         add(top, BorderLayout.NORTH)
         add(scroll, BorderLayout.CENTER)
@@ -121,12 +108,7 @@ class ChatPanel(private val project: Project) : JPanel(BorderLayout()), Disposab
         (notice.parent as? JPanel)?.isVisible = !connected
         settingsButton.isVisible = status in setOf(ClineProjectService.Status.MISSING_NODE, ClineProjectService.Status.MISSING_CORE, ClineProjectService.Status.WRONG_NODE)
         composer.update(connected)
-        for (b in listOf(newChat, historyButton, planButton, actButton)) b.isEnabled = connected
-        if (store != null) {
-            val mode = store.mode
-            planButton.isSelected = mode == "plan"
-            actButton.isSelected = mode != "plan"
-        }
+        approve.refresh()
         if (store == null) {
             clearRows()
             updateButtons(null)
@@ -188,24 +170,6 @@ class ChatPanel(private val project: Project) : JPanel(BorderLayout()), Disposab
         transcript.removeAll()
         transcript.revalidate()
         transcript.repaint()
-    }
-
-    private fun showHistory() {
-        val store = service.store ?: return
-        lateinit var dialog: DialogWrapper
-        val content = HistoryPanel(store, onOpened = { dialog.close(DialogWrapper.OK_EXIT_CODE) })
-        dialog = object : DialogWrapper(project, true) {
-            init {
-                title = "Task History"
-                setOKButtonText("Close")
-                init()
-            }
-
-            override fun createCenterPanel() = content
-
-            override fun createActions() = arrayOf(okAction)
-        }
-        dialog.show()
     }
 
     private fun updateButtons(store: ChatStore?) {

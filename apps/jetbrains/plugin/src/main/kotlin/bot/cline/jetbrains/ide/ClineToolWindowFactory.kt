@@ -13,5 +13,7 @@ class ClineToolWindowFactory : ToolWindowFactory, DumbAware {
         val content = ContentFactory.getInstance().createContent(panel, "", false)
         Disposer.register(content, panel)
         toolWindow.contentManager.addContent(content)
+        // New chat and history sit in the window's title bar, as in the VS Code client.
+        toolWindow.setTitleActions(listOf(NewChatTitleAction(), HistoryTitleAction()))
     }
 }
