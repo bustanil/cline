@@ -333,6 +333,12 @@ class Composer(
     /** Cline is working on the task: the send control is a stop button. */
     private var running = false
     private var details: ModelDetails? = null
+
+    /** Tokens the selected model can hold, once the core has said; null until then. */
+    val contextWindow: Long? get() = details?.contextWindow
+
+    /** Called when the model's details arrive, so the chat can draw the context bar. */
+    var onModelDetails: (() -> Unit)? = null
     private var detailsKey = ""
 
     init {
@@ -461,6 +467,7 @@ class Composer(
                         details = found
                         attachments.imagesAllowed = found?.supportsImages ?: true
                         refreshChip(selection.providerId, selection.modelId)
+                        onModelDetails?.invoke()
                     }
                 }, ModalityState.any())
             }

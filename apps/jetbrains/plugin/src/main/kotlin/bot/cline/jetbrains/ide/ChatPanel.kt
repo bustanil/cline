@@ -44,7 +44,7 @@ class ChatPanel(private val project: Project) : JPanel(BorderLayout()), Disposab
         background = ChatColors.page
         horizontalScrollBarPolicy = ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER
     }
-    private val metrics = JBLabel().apply { border = JBUI.Borders.empty(2, 10); foreground = com.intellij.util.ui.UIUtil.getContextHelpForeground() }
+    private val status = UsageStatusLine()
     private val notice = JBLabel().apply { border = JBUI.Borders.empty(12) }
     private val settingsButton = JButton("Open settings").apply {
         addActionListener { ShowSettingsUtil.getInstance().showSettingsDialog(project, ClineSettingsConfigurable::class.java) }
@@ -89,7 +89,6 @@ class ChatPanel(private val project: Project) : JPanel(BorderLayout()), Disposab
     init {
         val top = JPanel(BorderLayout()).apply {
             add(JPanel(FlowLayout(FlowLayout.LEFT)).apply { add(notice); add(settingsButton) }, BorderLayout.CENTER)
-            add(metrics, BorderLayout.SOUTH)
         }
         val buttons = JPanel(FlowLayout(FlowLayout.LEFT)).apply { add(primary); add(secondary) }
         val footer = JPanel(BorderLayout()).apply {
@@ -97,13 +96,14 @@ class ChatPanel(private val project: Project) : JPanel(BorderLayout()), Disposab
             background = ChatColors.page
             isOpaque = true
             add(JPanel(BorderLayout()).apply { isOpaque = false; border = JBUI.Borders.empty(6, 10, 0, 10); add(changed, BorderLayout.NORTH); add(buttons, BorderLayout.CENTER) }, BorderLayout.NORTH)
-            add(JPanel(BorderLayout()).apply { isOpaque = false; add(approve, BorderLayout.NORTH); add(composer, BorderLayout.CENTER) }, BorderLayout.CENTER)
+            add(JPanel(BorderLayout()).apply { isOpaque = false; add(approve, BorderLayout.NORTH); add(composer, BorderLayout.CENTER); add(status, BorderLayout.SOUTH) }, BorderLayout.CENTER)
         }
         add(top, BorderLayout.NORTH)
         add(scroll, BorderLayout.CENTER)
         add(footer, BorderLayout.SOUTH)
         mentions.attach()
         composer.keyHandler = { e -> mentions.handleKey(e) }
+        composer.onModelDetails = { service.store?.let { updateStatus(it.snapshot) } }
         service.addListener(listener)
         service.addInputListener(inputListener)
         service.start()
@@ -178,7 +178,7 @@ class ChatPanel(private val project: Project) : JPanel(BorderLayout()), Disposab
             }
             rows[item.key] = row
         }
-        metrics.text = ApiMetrics.describe(ApiMetrics.of(snapshot.messages))
+        updateStatus(snapshot)
         transcript.revalidate()
         transcript.repaint()
         if (atBottom) ApplicationManager.getApplication().invokeLater {
@@ -189,7 +189,14 @@ class ChatPanel(private val project: Project) : JPanel(BorderLayout()), Disposab
     /** The HTML of each row now drawn; for tests. */
     internal fun renderedHtml(): List<String> = rows.values.filterIsInstance<HtmlRow>().map { it.html }
 
-    internal fun metricsText(): String = metrics.text.orEmpty()
+    /** The cost text and the context bar under the composer. The bar needs the model's context window, which the composer looks up. */
+    private fun updateStatus(snapshot: ChatSnapshot) {
+        status.update(ApiMetrics.describe(ApiMetrics.of(snapshot.messages)), bot.cline.jetbrains.chat.ContextUsage.of(snapshot.messages, composer.contextWindow))
+    }
+
+    internal fun metricsText(): String = status.metricsText
+
+    internal fun statusLine(): UsageStatusLine = status
 
     private fun clearRows() {
         rows.clear()
