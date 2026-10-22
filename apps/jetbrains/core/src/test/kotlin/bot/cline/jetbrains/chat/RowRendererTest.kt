@@ -113,4 +113,18 @@ class RowRendererTest {
         assertFalse(search.contains("no path"), search)
     }
 
+
+    @Test
+    fun `a prompt carries its images and files`() {
+        val m = ChatMessage(say(1, "task", "look").raw.deepCopy().also {
+            it.add("images", com.google.gson.JsonArray().apply { add("data:image/png;base64,AAAA"); add("data:image/jpeg;base64,BBBB") })
+            it.add("files", com.google.gson.JsonArray().apply { add("/work/docs/spec.pdf") })
+        })
+        val view = RowRenderer.render(TranscriptItem.Single(m))
+        assertEquals(listOf("Image 1", "Image 2", "spec.pdf"), view.attachments.map { it.name })
+        assertEquals(listOf(Attachment.Kind.IMAGE, Attachment.Kind.IMAGE, Attachment.Kind.FILE), view.attachments.map { it.kind })
+        assertEquals("/work/docs/spec.pdf", view.attachments[2].value)
+        assertTrue(RowRenderer.render(TranscriptItem.Single(say(2, "task", "plain"))).attachments.isEmpty())
+        assertTrue(RowRenderer.render(TranscriptItem.Single(say(3, "text", "reply"))).attachments.isEmpty())
+    }
 }

@@ -11,7 +11,6 @@ import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.application.ModalityState
 import com.intellij.openapi.options.ShowSettingsUtil
 import com.intellij.openapi.ui.DialogWrapper
-import bot.cline.jetbrains.chat.ModelSettings
 import com.intellij.openapi.project.Project
 import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBScrollPane
@@ -52,31 +51,16 @@ class ChatPanel(private val project: Project) : JPanel(BorderLayout()), Disposab
     }
     private val primary = JButton().apply { addActionListener { run(Slot.PRIMARY) } }
     private val secondary = JButton().apply { addActionListener { run(Slot.SECONDARY) } }
-    private val input = JBTextArea(3, 40).apply {
-        lineWrap = true
-        wrapStyleWord = true
-        border = JBUI.Borders.empty(4)
-        emptyText.text = "Type a task, or a reply. Enter sends, Shift+Enter adds a line."
-        addKeyListener(object : KeyAdapter() {
-            override fun keyPressed(e: KeyEvent) {
-                if (mentions.handleKey(e)) return
-                if (e.keyCode == KeyEvent.VK_ENTER && !e.isShiftDown) {
-                    e.consume()
-                    send()
-                }
-            }
-        })
-    }
     private val newChat = JButton("New chat").apply { addActionListener { service.store?.let { report(it.clearTask()) } } }
     private val historyButton = JButton("History").apply { addActionListener { showHistory() } }
     private val planButton = javax.swing.JToggleButton("Plan").apply { addActionListener { service.store?.let { report(it.setMode("plan")) } } }
     private val actButton = javax.swing.JToggleButton("Act").apply { addActionListener { service.store?.let { report(it.setMode("act")) } } }
-    private val modelButton = JButton("Model…").apply { addActionListener { showModel() } }
     private val changed = ChangedFilesPanel(project, store = { service.store })
     private var lastPhase: String? = null
     private var shownStore: ChatStore? = null
-    private val mentions: MentionController = MentionController(input, search = { query -> service.store?.searchMentions(query) ?: CompletableFuture.completedFuture(bot.cline.jetbrains.chat.MentionResults(emptyList(), null, null)) })
-    private val sendButton = JButton("Send").apply { addActionListener { send() } }
+    private val composer: Composer = Composer(project, store = { service.store }, onSubmit = { text, images, files -> sendMessage(text, images, files) })
+    private val input get() = composer.input
+    private val mentions: MentionController = MentionController(composer.input, search = { query -> service.store?.searchMentions(query) ?: CompletableFuture.completedFuture(bot.cline.jetbrains.chat.MentionResults(emptyList(), null, null)) })
     private val listener: () -> Unit = { ApplicationManager.getApplication().invokeLater(::refresh, ModalityState.any()) }
     private val inputListener: (String) -> Unit = { text ->
         ApplicationManager.getApplication().invokeLater({
@@ -95,7 +79,7 @@ class ChatPanel(private val project: Project) : JPanel(BorderLayout()), Disposab
                 JPanel(BorderLayout()).apply {
                     add(JPanel(FlowLayout(FlowLayout.LEFT, 4, 2)).apply {
                         val modes = javax.swing.ButtonGroup().apply { add(planButton); add(actButton) }
-                        add(newChat); add(historyButton); add(planButton); add(actButton); add(modelButton)
+                        add(newChat); add(historyButton); add(planButton); add(actButton)
                     }, BorderLayout.NORTH)
                     add(JPanel(FlowLayout(FlowLayout.LEFT)).apply { add(notice); add(settingsButton) }, BorderLayout.CENTER)
                 },
@@ -104,19 +88,18 @@ class ChatPanel(private val project: Project) : JPanel(BorderLayout()), Disposab
             add(metrics, BorderLayout.SOUTH)
         }
         val buttons = JPanel(FlowLayout(FlowLayout.LEFT)).apply { add(primary); add(secondary) }
-        val inputRow = JPanel(BorderLayout(JBUI.scale(6), 0)).apply {
-            add(JBScrollPane(input), BorderLayout.CENTER)
-            add(sendButton, BorderLayout.EAST)
-        }
         val footer = JPanel(BorderLayout()).apply {
-            border = JBUI.Borders.empty(6)
-            add(JPanel(BorderLayout()).apply { add(changed, BorderLayout.NORTH); add(buttons, BorderLayout.CENTER) }, BorderLayout.NORTH)
-            add(inputRow, BorderLayout.CENTER)
+            border = JBUI.Borders.empty(0, 0, 4, 0)
+            background = ChatColors.page
+            isOpaque = true
+            add(JPanel(BorderLayout()).apply { isOpaque = false; border = JBUI.Borders.empty(6, 10, 0, 10); add(changed, BorderLayout.NORTH); add(buttons, BorderLayout.CENTER) }, BorderLayout.NORTH)
+            add(composer, BorderLayout.CENTER)
         }
         add(top, BorderLayout.NORTH)
         add(scroll, BorderLayout.CENTER)
         add(footer, BorderLayout.SOUTH)
         mentions.attach()
+        composer.keyHandler = { e -> mentions.handleKey(e) }
         service.addListener(listener)
         service.addInputListener(inputListener)
         service.start()
@@ -137,17 +120,12 @@ class ChatPanel(private val project: Project) : JPanel(BorderLayout()), Disposab
         }
         (notice.parent as? JPanel)?.isVisible = !connected
         settingsButton.isVisible = status in setOf(ClineProjectService.Status.MISSING_NODE, ClineProjectService.Status.MISSING_CORE, ClineProjectService.Status.WRONG_NODE)
-        input.isEnabled = connected
-        sendButton.isEnabled = connected
-        for (b in listOf(newChat, historyButton, planButton, actButton, modelButton)) b.isEnabled = connected
+        composer.update(connected)
+        for (b in listOf(newChat, historyButton, planButton, actButton)) b.isEnabled = connected
         if (store != null) {
             val mode = store.mode
             planButton.isSelected = mode == "plan"
             actButton.isSelected = mode != "plan"
-            val providers = emptyList<bot.cline.jetbrains.chat.ProviderOption>()
-            val current = ModelSettings.current(store.snapshot.extensionState, mode, providers)
-            modelButton.text = listOfNotNull(current.providerId, current.modelId?.substringAfterLast('/')).joinToString(" · ").ifEmpty { "Model…" }
-            modelButton.toolTipText = "Provider and model for ${mode.replaceFirstChar { it.uppercase() }} mode"
         }
         if (store == null) {
             clearRows()
@@ -230,25 +208,6 @@ class ChatPanel(private val project: Project) : JPanel(BorderLayout()), Disposab
         dialog.show()
     }
 
-    private fun showModel() {
-        val store = service.store ?: return
-        val content = ModelPanel(store)
-        val dialog = object : DialogWrapper(project, true) {
-            init {
-                title = "Model and API Key"
-                init()
-            }
-
-            override fun createCenterPanel() = content
-
-            override fun doOKAction() {
-                super.doOKAction()
-                report(content.apply())
-            }
-        }
-        dialog.show()
-    }
-
     private fun updateButtons(store: ChatStore?) {
         val config = store?.buttons()
         primary.isVisible = config?.primaryText != null
@@ -268,12 +227,9 @@ class ChatPanel(private val project: Project) : JPanel(BorderLayout()), Disposab
         if (action != ButtonAction.CANCEL && action != ButtonAction.NEW_TASK) input.text = ""
     }
 
-    private fun send() {
+    private fun sendMessage(text: String, images: List<String>, files: List<String>) {
         val store = service.store ?: return
-        val text = input.text.trim()
-        if (text.isEmpty()) return
-        input.text = ""
-        report(store.send(text))
+        report(store.send(text, images, files))
     }
 
     private fun report(future: CompletableFuture<*>) {

@@ -90,6 +90,19 @@ class HtmlRowTest : BasePlatformTestCase() {
         assertTrue(hasPane(row.component))
     }
 
+    fun `test a prompt shows its images and files in the bubble`() {
+        val pic = java.io.ByteArrayOutputStream().also { javax.imageio.ImageIO.write(java.awt.image.BufferedImage(8, 6, java.awt.image.BufferedImage.TYPE_INT_RGB), "png", it) }.toByteArray()
+        val url = "data:image/png;base64," + java.util.Base64.getEncoder().encodeToString(pic)
+        val raw = message(4, "say", "task", "look at these").raw.also {
+            it.add("images", com.google.gson.JsonArray().apply { add(url) })
+            it.add("files", com.google.gson.JsonArray().apply { add("/work/spec.pdf") })
+        }
+        val row = row(FakeCore(), TranscriptItem.Single(ChatMessage(raw)))
+        assertEquals(listOf("[image]", "spec.pdf"), row.attachmentLabels)
+        val plain = row(FakeCore(), TranscriptItem.Single(message(5, "say", "task", "no attachments")))
+        assertEquals(emptyList<String>(), plain.attachmentLabels)
+    }
+
     fun `test an unknown kind still draws`() {
         val unknown = TranscriptItem.Single(message(9, "say", "brand_new", """{"a":1}"""))
         assertTrue(row(FakeCore(), unknown).html.contains("say · brand_new"))

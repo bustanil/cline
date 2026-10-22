@@ -247,8 +247,32 @@ class HtmlRow(item: TranscriptItem, private val context: RowContext) : ChatRow {
             layout = BorderLayout()
             border = JBUI.Borders.empty(4, 6)
             add(content, BorderLayout.CENTER)
+            if (view.attachments.isNotEmpty()) add(attachmentsOf(view.attachments), BorderLayout.SOUTH)
         })
     }.also { bubble = it }
+
+    /** Thumbnails of the images and names of the files that were sent with the prompt. */
+    private fun attachmentsOf(items: List<bot.cline.jetbrains.chat.Attachment>): JComponent = JPanel(java.awt.FlowLayout(java.awt.FlowLayout.LEFT, 6, 4)).apply {
+        isOpaque = false
+        border = JBUI.Borders.empty(0, 6, 4, 6)
+        for (a in items) {
+            add(
+                if (a.kind == bot.cline.jetbrains.chat.Attachment.Kind.IMAGE) {
+                    JBLabel(attachmentThumbnail(a, 72)).apply { toolTipText = a.name; border = BorderFactory.createLineBorder(ChatColors.border) }
+                } else {
+                    JBLabel(a.name, com.intellij.icons.AllIcons.FileTypes.Any_type, JBLabel.LEADING).apply { toolTipText = a.value }
+                },
+            )
+        }
+    }
+
+    internal val attachmentLabels: List<String> get() = bubble?.let { b -> collectLabels(b) } ?: emptyList()
+
+    private fun collectLabels(c: java.awt.Component): List<String> = when (c) {
+        is JBLabel -> listOf((if (c.icon is javax.swing.ImageIcon && c.text.isNullOrEmpty()) "[image]" else c.text.orEmpty()))
+        is java.awt.Container -> c.components.flatMap(::collectLabels)
+        else -> emptyList()
+    }
 
     private fun layoutParts() {
         panel.removeAll()

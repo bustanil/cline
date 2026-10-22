@@ -54,6 +54,40 @@ class ModelSettingsTest {
     }
 
     @Test
+    fun `models carry their context size and what they support`() {
+        val core = Canned(mapOf("resolveProviderModels" to """{"ok":true,"models":{"a":{"name":"Alpha","contextWindow":"1000000","supportsImages":true,"supportsReasoning":true},"b":{"contextWindow":200000},"c":{"contextWindow":1500}}}"""))
+        val models = ModelSettings(core).models("p").get().models.associateBy { it.id }
+        assertEquals(ModelOption("a", "Alpha", 1_000_000, true, true), models.getValue("a"))
+        assertEquals(listOf("1M", "200K", "1.5K"), listOf("a", "b", "c").map { models.getValue(it).contextLabel })
+        assertEquals(listOf("Alpha", "b"), listOf(models.getValue("a").label, models.getValue("b").label))
+        assertEquals("", ModelOption("x", null).contextLabel)
+    }
+
+    @Test
+    fun `effort is written as a reasoning patch and Off disables it`() {
+        val core = Canned(emptyMap())
+        val settings = ModelSettings(core)
+        settings.setEffort("anthropic", ReasoningEffort.HIGH).get()
+        var reasoning = core.body("writeProviderConfig").getAsJsonObject("patch").getAsJsonObject("reasoning")
+        assertEquals(true, reasoning.get("enabled").asBoolean)
+        assertEquals("high", reasoning.get("effort").asString)
+        settings.setEffort("anthropic", ReasoningEffort.NONE).get()
+        reasoning = core.body("writeProviderConfig").getAsJsonObject("patch").getAsJsonObject("reasoning")
+        assertEquals(false, reasoning.get("enabled").asBoolean)
+        assertFalse(reasoning.has("effort"))
+        assertEquals(ReasoningEffort.XHIGH, ReasoningEffort.fromWire("xhigh"))
+        assertEquals(null, ReasoningEffort.fromWire("bogus"))
+    }
+
+    @Test
+    fun `details read the model a mode uses from the provider config`() {
+        val config = """{"providerId":"anthropic","actSelection":{"providerId":"anthropic","modelId":"claude-sonnet-5","modelInfo":{"name":"Claude Sonnet 5","contextWindow":1000000,"supportsImages":true,"supportsReasoning":true}}}"""
+        val settings = ModelSettings(Canned(mapOf("readProviderConfig" to config)))
+        assertEquals(ModelDetails("claude-sonnet-5", "Claude Sonnet 5", 1_000_000, true, true), settings.details("anthropic", "act").get())
+        assertEquals(null, settings.details("anthropic", "plan").get())
+    }
+
+    @Test
     fun `selecting commits the provider mode and model`() {
         val core = Canned(emptyMap())
         ModelSettings(core).select("anthropic", "act", "claude-sonnet-5").get()

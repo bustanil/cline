@@ -15,6 +15,8 @@ class ClineSettings : PersistentStateComponent<ClineSettings.State> {
         var corePath: String = "",
         /** Data folder; blank uses the shared `~/.cline`. */
         var dataDir: String = "",
+        /** The reasoning effort last set for each provider. The core takes it but does not report it, so it is kept here. */
+        var efforts: MutableMap<String, String> = mutableMapOf(),
     )
 
     private var state = State()
@@ -23,6 +25,12 @@ class ClineSettings : PersistentStateComponent<ClineSettings.State> {
 
     override fun loadState(state: State) {
         this.state = state
+    }
+
+    fun effortFor(providerId: String): String? = state.efforts[providerId]
+
+    fun rememberEffort(providerId: String, effort: String) {
+        state.efforts[providerId] = effort
     }
 
     companion object {

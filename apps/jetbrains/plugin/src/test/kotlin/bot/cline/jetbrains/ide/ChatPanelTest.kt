@@ -43,7 +43,7 @@ class ChatPanelTest : BasePlatformTestCase() {
         UIUtil.dispatchAllInvocationEvents()
         val labels = panel.all(JLabel::class.java).map { it.text.orEmpty() }
         assertTrue(labels.toString(), labels.any { it.contains("cline-core.js was not found") })
-        assertFalse(panel.all(JButton::class.java).first { it.text == "Send" }.isEnabled)
+        assertFalse(panel.all(JButton::class.java).first { it.text == "↑" }.isEnabled)
         panel.dispose()
     }
 
@@ -81,7 +81,7 @@ class ChatPanelTest : BasePlatformTestCase() {
         modelPanel.chooseProvider("anthropic")
         modelPanel.chooseModel("claude-sonnet-5")
         modelPanel.apply().get(30, java.util.concurrent.TimeUnit.SECONDS)
-        assertTrue("model button never showed the new provider", pump(30_000) { panel.all(JButton::class.java).any { it.text.startsWith("anthropic") } })
+        assertTrue("the model chip never showed the new model", pump(30_000) { panel.all(PillButton::class.java).any { it.text.contains("Claude Sonnet 5") } })
         // Leave a provider with no key behind, as the core's defaults expect.
         service.store!!.models.select("openrouter", "act", "anthropic/claude-sonnet-5.5").get(30, java.util.concurrent.TimeUnit.SECONDS)
         panel.dispose()

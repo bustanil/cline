@@ -110,6 +110,22 @@ class RealCoreSmokeTest {
             assertTrue(store.snapshot.messages.isNotEmpty(), "no messages arrived after newTask")
             println("BUTTONS: " + store.buttons())
             assertTrue(store.buttons().primaryText == "Retry", "expected Retry, got " + store.buttons())
+            // A task with an image and a file: the core keeps both in the task message.
+            store.clearTask().get(30, TimeUnit.SECONDS)
+            val attach = bot.cline.jetbrains.chat.Attachments()
+            val pic = java.io.ByteArrayOutputStream().also { javax.imageio.ImageIO.write(java.awt.image.BufferedImage(3, 3, java.awt.image.BufferedImage.TYPE_INT_RGB), "png", it) }.toByteArray()
+            attach.addImageBytes(pic, "image/png", "p.png")
+            attach.addFile(File(workspace, "a.txt"))
+            store.newTask("describe these", attach.images, attach.files).get(60, TimeUnit.SECONDS)
+            val deadlineA = System.currentTimeMillis() + 60_000
+            var taskMessage: bot.cline.jetbrains.chat.ChatMessage? = null
+            while (System.currentTimeMillis() < deadlineA && taskMessage == null) {
+                taskMessage = store.snapshot.messages.firstOrNull { it.raw.get("say")?.asString == "task" && it.raw.get("text")?.asString == "describe these" }
+                if (taskMessage == null) Thread.sleep(250)
+            }
+            println("ATTACHED: images=" + taskMessage?.raw?.getAsJsonArray("images")?.size() + " files=" + taskMessage?.raw?.getAsJsonArray("files")?.size() + " file0=" + taskMessage?.raw?.getAsJsonArray("files")?.firstOrNull())
+            assertTrue(taskMessage != null && (taskMessage!!.raw.getAsJsonArray("images")?.size() ?: 0) == 1, "task message: " + taskMessage?.raw)
+            assertTrue((taskMessage!!.raw.getAsJsonArray("files")?.size() ?: 0) == 1)
             store.stop()
         } finally {
             process.destroy()

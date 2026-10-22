@@ -30,6 +30,8 @@ data class RowView(
     val blocks: ((resolved: Map<String, FileLink>) -> List<MarkdownHtml.Block>)? = null,
     /** True for what the user wrote: drawn as a rounded bubble on the right, with no heading. */
     val userBubble: Boolean = false,
+    /** The images and files that went with a prompt. */
+    val attachments: List<Attachment> = emptyList(),
 )
 
 /**
@@ -50,8 +52,8 @@ object RowRenderer {
     private fun single(m: ChatMessage, c: RowColors, highlighter: CodeHighlighter?): RowView {
         val type = m.raw.str("type")
         return when {
-            m.isSay("task") -> markdown(null, m, c, highlighter).copy(userBubble = true)
-            m.isSay("user_feedback") -> markdown(null, m, c, highlighter).copy(userBubble = true)
+            m.isSay("task") -> markdown(null, m, c, highlighter).copy(userBubble = true, attachments = attachmentsOf(m))
+            m.isSay("user_feedback") -> markdown(null, m, c, highlighter).copy(userBubble = true, attachments = attachmentsOf(m))
             m.isSay("text") || m.isSay("plan_completion_result") -> markdown(null, m, c, highlighter)
             m.isSay("reasoning") -> markdown(null, m, c, highlighter).copy(collapsedTitle = "Thinking")
             m.isSay("completion_result") || m.isAsk("completion_result") -> markdown("✓ Task completed", m, c, highlighter)
@@ -64,6 +66,13 @@ object RowRenderer {
             m.isSay("api_req_started") -> requestProblem(m, c)
             else -> fallback(m, type, c)
         }
+    }
+
+    /** The `images` (data URLs) and `files` (paths) of a prompt, as attachments. */
+    internal fun attachmentsOf(m: ChatMessage): List<Attachment> {
+        val images = m.raw.getAsJsonArray("images")?.mapIndexedNotNull { i, e -> e.takeIf { it.isJsonPrimitive }?.asString?.let { Attachment(Attachment.Kind.IMAGE, "Image ${i + 1}", it, it.length.toLong()) } }.orEmpty()
+        val files = m.raw.getAsJsonArray("files")?.mapNotNull { e -> e.takeIf { it.isJsonPrimitive }?.asString?.let { Attachment(Attachment.Kind.FILE, it.substringAfterLast('/').substringAfterLast('\\'), it, 0) } }.orEmpty()
+        return images + files
     }
 
     private fun codeStyle(c: RowColors, highlighter: CodeHighlighter?) = CodeBlockStyle(c.codeBackground, c.codeBorder, c.tableHeader, highlighter)
