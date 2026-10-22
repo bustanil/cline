@@ -24,11 +24,18 @@ class ChatPanelTest : BasePlatformTestCase() {
         return false
     }
 
+    override fun setUp() {
+        super.setUp()
+        // The paced reveal spreads an answer over a few seconds; the tests want the whole state at once.
+        ChatPanel.pacedReveal = false
+    }
+
     override fun tearDown() {
         try {
             ClineProjectService.getInstance(project).dispose()
             val s = ClineSettings.getInstance().state
             s.nodePath = ""; s.corePath = ""; s.dataDir = ""
+            ChatPanel.pacedReveal = true
         } finally {
             super.tearDown()
         }
