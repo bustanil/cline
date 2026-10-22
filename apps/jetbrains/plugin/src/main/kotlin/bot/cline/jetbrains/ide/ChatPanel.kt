@@ -5,7 +5,6 @@ import bot.cline.jetbrains.chat.ChatSnapshot
 import bot.cline.jetbrains.chat.ApiMetrics
 import bot.cline.jetbrains.chat.ChatStore
 import bot.cline.jetbrains.chat.Coalescer
-import bot.cline.jetbrains.chat.RevealPacer
 import bot.cline.jetbrains.chat.Transcript
 import bot.cline.jetbrains.chat.TranscriptItem
 import com.intellij.openapi.Disposable
@@ -69,16 +68,6 @@ class ChatPanel(private val project: Project) : JPanel(BorderLayout()), Disposab
         })
     }
     private val buttonBar = JPanel(BorderLayout())
-    private val pacer = RevealPacer()
-    // Paints the next few words of an answer that is being revealed; it stops itself when there is nothing left.
-    private val ticker = javax.swing.Timer(TICK_MS) {
-        if (pacer.revealing) {
-            pacer.advance()
-            redraw.request()
-        } else {
-            (it.source as javax.swing.Timer).stop()
-        }
-    }
     private var lastPhase: String? = null
     private var shownStore: ChatStore? = null
     private val composer: Composer = Composer(project, store = { service.store }, onSubmit = { text, images, files -> sendMessage(text, images, files) })
@@ -108,13 +97,6 @@ class ChatPanel(private val project: Project) : JPanel(BorderLayout()), Disposab
     companion object {
         /** The longest wait between draws while updates keep coming: about 20 per second. */
         const val RENDER_INTERVAL_MS = 50L
-
-        /** The wait between two steps of revealing an answer. */
-        const val TICK_MS = 60
-
-        /** Tests turn the paced reveal off to see the whole state at once. */
-        @JvmStatic
-        var pacedReveal = true
     }
 
     // The two footer slots; the store decides what each does.
@@ -191,9 +173,7 @@ class ChatPanel(private val project: Project) : JPanel(BorderLayout()), Disposab
 
     private fun syncRows(store: ChatStore, snapshot: ChatSnapshot) {
         val atBottom = scroll.verticalScrollBar.let { it.value + it.visibleAmount >= it.maximum - 8 }
-        val built = Transcript.build(snapshot.messages, snapshot.turnState?.phase)
-        val items = if (pacedReveal) pacer.apply(built, snapshot.turnState?.phase) else built
-        if (pacer.revealing && pacedReveal && !ticker.isRunning) ticker.start()
+        val items = Transcript.build(snapshot.messages, snapshot.turnState?.phase)
         val keys = items.map { it.key }
         // Rows only ever grow at the end while a task runs. Anything else (a new task, history) starts over.
         if (rows.keys.toList() != keys.take(rows.size)) clearRows()
@@ -253,7 +233,7 @@ class ChatPanel(private val project: Project) : JPanel(BorderLayout()), Disposab
             buttonKey = key
             dismissedFor = null
         }
-        val shown = config != null && dismissedFor != key && !pacer.revealing
+        val shown = config != null && dismissedFor != key
         primary.isVisible = shown && config?.primaryText != null
         secondary.isVisible = shown && config?.secondaryText != null
         dismiss.isVisible = shown && (config?.primaryText != null || config?.secondaryText != null)
@@ -294,7 +274,6 @@ class ChatPanel(private val project: Project) : JPanel(BorderLayout()), Disposab
     internal fun composer(): Composer = composer
 
     override fun dispose() {
-        ticker.stop()
         service.removeListener(listener)
         service.removeInputListener(inputListener)
         service.removeNewChatListener(newChatListener)
