@@ -69,6 +69,38 @@ class ActivityRowTest : BasePlatformTestCase() {
         ImageIO.write(image, "png", File(dir, "$name.png"))
     }
 
+    private fun runningActivity(output: String): TranscriptItem.Activity =
+        Transcript.build(listOf(msg(1, "say", "command", "make build"), msg(2, "say", "command_output", output)), "streaming").filterIsInstance<TranscriptItem.Activity>().single()
+
+    fun `test streamed command output updates the text without rebuilding the row or the step`() {
+        val r = ActivityRow(runningActivity("line 0"), RowContext(FileLinks(Core())))
+        val step = r.stepPanels().single()
+        val layouts = r.layouts
+        val draws = step.draws
+        val lines = StringBuilder("line 0")
+        repeat(40) {
+            lines.append("\nline ${it + 1}")
+            assertTrue(r.update(runningActivity(lines.toString())))
+        }
+        assertEquals("the row keeps its shape while output streams", layouts, r.layouts)
+        assertEquals("the step is not rebuilt", draws, step.draws)
+        assertTrue("only its text is replaced", step.textUpdates >= 1)
+        assertTrue(step.html.contains("line 40"))
+    }
+
+    fun `test a new step or a finished one does rearrange the row`() {
+        val one = Transcript.build(listOf(msg(1, "say", "command", "a")), "streaming").filterIsInstance<TranscriptItem.Activity>().single()
+        val r = ActivityRow(one, RowContext(FileLinks(Core())))
+        val before = r.layouts
+        val two = Transcript.build(listOf(msg(1, "say", "command", "a"), msg(3, "say", "command", "b")), "streaming").filterIsInstance<TranscriptItem.Activity>().single()
+        r.update(two)
+        assertTrue(r.layouts > before)
+        val done = Transcript.build(listOf(msg(1, "say", "command", "a"), msg(3, "say", "command", "b")), "idle").filterIsInstance<TranscriptItem.Activity>().single()
+        val mid = r.layouts
+        r.update(done)
+        assertTrue("finishing changes the header", r.layouts > mid)
+    }
+
     fun `test a finished activity folds under its header`() {
         val r = row("idle")
         assertEquals("Ran 4 steps", r.title)

@@ -56,8 +56,12 @@ class ActivityRow(item: TranscriptItem.Activity, private val context: RowContext
         render()
     }
 
+    private var lastItem: TranscriptItem.Activity = item
+
     override fun update(item: TranscriptItem): Boolean {
         if (item !is TranscriptItem.Activity || item.key != key) return false
+        if (item.sameContentAs(lastItem)) return true
+        lastItem = item
         view = ActivityRenderer.render(item, context.colors())
         render()
         return true
@@ -66,6 +70,12 @@ class ActivityRow(item: TranscriptItem.Activity, private val context: RowContext
     /** While the activity is the live end of the chat it is open; once finished it folds away. */
     private val isOpen: Boolean get() = view.steps.size == 1 || (groupOpen ?: view.running)
 
+    private var shownShape: List<Any?>? = null
+
+    /** How many times the row's parts were rearranged; for tests. */
+    internal var layouts = 0
+        private set
+
     private fun render() {
         val live = view.steps.map { it.key }.toSet()
         steps.keys.retainAll(live)
@@ -73,6 +83,12 @@ class ActivityRow(item: TranscriptItem.Activity, private val context: RowContext
             val isLast = index == view.steps.lastIndex
             steps.getOrPut(step.key) { StepPanel(context, openByDefault = { view.running && isLast }) }.update(step)
         }
+        // The steps update themselves in place. The row is rearranged only when its shape changed: a step
+        // was added or finished, or it was opened or closed. Not on every streamed line of output.
+        val shape = listOf(view.title, isOpen, view.steps.map { it.key to it.running })
+        if (shape == shownShape) return
+        shownShape = shape
+        layouts++
         panel.removeAll()
         val box = JPanel().apply {
             layout = BoxLayout(this, BoxLayout.Y_AXIS)
@@ -173,10 +189,33 @@ class StepPanel(private val context: RowContext, private val openByDefault: () -
         }
     }
 
+    private var shownStructure: List<Any?>? = null
+    private var shownHtml: String? = null
+
+    /** How many times the step was rebuilt, and how many times only its text was replaced; for tests. */
+    internal var draws = 0
+        private set
+    internal var textUpdates = 0
+        private set
+
     private fun draw() {
         val step = step ?: return
-        panel.removeAll()
         val open = isOpen
+        val html = if (open) step.detailHtml(resolved) else null
+        val structure = listOf(open, step.verb, step.target, step.running, step.openTitle, step.isCommand)
+        if (structure == shownStructure) {
+            // Only the detail grew, such as a command's output: replace the text and leave the rest alone.
+            if (open && html != null && html != shownHtml) {
+                shownHtml = html
+                pane.text = html
+                textUpdates++
+            }
+            return
+        }
+        shownStructure = structure
+        shownHtml = html
+        draws++
+        panel.removeAll()
         val line = JPanel(BorderLayout()).apply { isOpaque = false }
         val text = JPanel(FlowLayout(FlowLayout.LEFT, 0, 0)).apply {
             isOpaque = false
@@ -192,8 +231,7 @@ class StepPanel(private val context: RowContext, private val openByDefault: () -
         clickable(line) { toggle() }
         clickable(text) { toggle() }
         panel.add(line, BorderLayout.NORTH)
-        if (open) {
-            val html = step.detailHtml(resolved)
+        if (open && html != null) {
             if (pane.text != html) pane.text = html
             if (step.isCommand) {
                 terminal.removeAll()

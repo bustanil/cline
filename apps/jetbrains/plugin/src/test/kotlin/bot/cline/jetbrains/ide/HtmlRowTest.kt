@@ -103,6 +103,38 @@ class HtmlRowTest : BasePlatformTestCase() {
         assertEquals(emptyList<String>(), plain.attachmentLabels)
     }
 
+    fun `test streaming text changes the words but does not rearrange the row`() {
+        val row = row(FakeCore(), item("Hello"))
+        val first = row.layouts
+        var text = "Hello"
+        repeat(30) {
+            text += " word$it"
+            assertTrue(row.update(item(text)))
+        }
+        assertEquals("a streamed update must not tear the row down", first, row.layouts)
+        assertTrue(row.html.contains("word29"))
+    }
+
+    fun `test an update that changes nothing does no work`() {
+        val message = message(1, "say", "text", "same words")
+        val row = row(FakeCore(), TranscriptItem.Single(message))
+        val html = row.html
+        val layouts = row.layouts
+        repeat(20) { row.update(TranscriptItem.Single(message)) }
+        // A copy with equal content counts as unchanged too.
+        row.update(TranscriptItem.Single(ChatMessage(message.raw.deepCopy())))
+        assertEquals(html, row.html)
+        assertEquals(layouts, row.layouts)
+    }
+
+    fun `test the row is rearranged when its shape changes`() {
+        val row = row(FakeCore(), TranscriptItem.Single(message(1, "ask", "followup", """{"question":"Which?"}""")))
+        val before = row.layouts
+        row.update(TranscriptItem.Single(message(1, "ask", "followup", """{"question":"Which?","options":["A","B"]}""")))
+        assertEquals(before + 1, row.layouts)
+        assertEquals(listOf("A", "B"), row.answerButtons.map { it.text })
+    }
+
     fun `test an unknown kind still draws`() {
         val unknown = TranscriptItem.Single(message(9, "say", "brand_new", """{"a":1}"""))
         assertTrue(row(FakeCore(), unknown).html.contains("say · brand_new"))

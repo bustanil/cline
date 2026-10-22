@@ -4,6 +4,7 @@ import bot.cline.jetbrains.chat.ButtonAction
 import bot.cline.jetbrains.chat.ChatSnapshot
 import bot.cline.jetbrains.chat.ApiMetrics
 import bot.cline.jetbrains.chat.ChatStore
+import bot.cline.jetbrains.chat.Coalescer
 import bot.cline.jetbrains.chat.Transcript
 import bot.cline.jetbrains.chat.TranscriptItem
 import com.intellij.openapi.Disposable
@@ -57,13 +58,29 @@ class ChatPanel(private val project: Project) : JPanel(BorderLayout()), Disposab
     private val composer: Composer = Composer(project, store = { service.store }, onSubmit = { text, images, files -> sendMessage(text, images, files) })
     private val input get() = composer.input
     private val mentions: MentionController = MentionController(composer.input, search = { query -> service.store?.searchMentions(query) ?: CompletableFuture.completedFuture(bot.cline.jetbrains.chat.MentionResults(emptyList(), null, null)) })
-    private val listener: () -> Unit = { ApplicationManager.getApplication().invokeLater(::refresh, ModalityState.any()) }
+    // Updates arrive for nearly every word while a reply streams. Drawing each one makes the chat flicker, so they
+    // are batched: at most one draw per 50 ms, always ending on the latest state.
+    private val redraw = Coalescer(
+        intervalMs = RENDER_INTERVAL_MS,
+        schedule = { delay, task ->
+            ApplicationManager.getApplication().invokeLater({
+                if (delay <= 0) task() else javax.swing.Timer(delay.toInt()) { task() }.apply { isRepeats = false; start() }
+            }, ModalityState.any())
+        },
+        run = { refresh() },
+    )
+    private val listener: () -> Unit = { redraw.request() }
     private val inputListener: (String) -> Unit = { text ->
         ApplicationManager.getApplication().invokeLater({
             input.text = if (input.text.isBlank()) text else input.text.trimEnd() + "\n\n" + text
             input.caretPosition = input.text.length
             input.requestFocusInWindow()
         }, ModalityState.any())
+    }
+
+    companion object {
+        /** The longest wait between draws while updates keep coming: about 20 per second. */
+        const val RENDER_INTERVAL_MS = 50L
     }
 
     // The two footer slots; the store decides what each does.
@@ -215,6 +232,8 @@ class ChatPanel(private val project: Project) : JPanel(BorderLayout()), Disposab
             }
         }
     }
+
+    internal fun drawsSoFar(): Int = redraw.runs
 
     override fun dispose() {
         service.removeListener(listener)

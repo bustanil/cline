@@ -88,6 +88,18 @@ class RowContext(
     }
 }
 
+/**
+ * Whether [other] would draw the same as this item. Rows that did not change are left alone, so a long chat does
+ * not render every row again for each word of the one that is streaming.
+ */
+internal fun TranscriptItem.sameContentAs(other: TranscriptItem?): Boolean = when {
+    other == null -> false
+    this is TranscriptItem.Single && other is TranscriptItem.Single -> message === other.message || message.raw == other.message.raw
+    this is TranscriptItem.Activity && other is TranscriptItem.Activity ->
+        running == other.running && messages.size == other.messages.size && messages.indices.all { messages[it] === other.messages[it] || messages[it].raw == other.messages[it].raw }
+    else -> false
+}
+
 /** One row of the transcript. */
 interface ChatRow {
     val component: JComponent
@@ -167,8 +179,12 @@ class HtmlRow(item: TranscriptItem, private val context: RowContext) : ChatRow {
         draw()
     }
 
+    private var lastItem: TranscriptItem = item
+
     override fun update(item: TranscriptItem): Boolean {
         if (item.key != key) return false
+        if (item.sameContentAs(lastItem)) return true
+        lastItem = item
         view = RowRenderer.render(item, context.colors(), context.highlighter)
         draw()
         return true
@@ -223,9 +239,14 @@ class HtmlRow(item: TranscriptItem, private val context: RowContext) : ChatRow {
                 pane.text = html
             }
         }
-        answers.removeAll()
-        view.options.forEach { option -> answers.add(JButton(option).apply { addActionListener { context.reply(option) } }) }
-        layoutParts()
+        // Rebuild the answer buttons and the row's parts only when they changed, not on every streamed word.
+        if (view.options != shownOptions) {
+            shownOptions = view.options
+            answers.removeAll()
+            view.options.forEach { option -> answers.add(JButton(option).apply { addActionListener { context.reply(option) } }) }
+        }
+        val shape = listOf(view.collapsedTitle, expanded, view.blocks != null, view.userBubble, view.options)
+        if (shape != shownShape) layoutParts()
         // Ask the core only about paths not asked about yet; streaming text repeats them.
         for (reference in view.references) {
             if (!asked.add(reference)) continue
@@ -277,7 +298,16 @@ class HtmlRow(item: TranscriptItem, private val context: RowContext) : ChatRow {
         else -> emptyList()
     }
 
+    private var shownOptions: List<String> = emptyList()
+    private var shownShape: List<Any?>? = null
+
+    /** How many times the row's parts were rearranged; for tests. */
+    internal var layouts = 0
+        private set
+
     private fun layoutParts() {
+        layouts++
+        shownShape = listOf(view.collapsedTitle, expanded, view.blocks != null, view.userBubble, view.options)
         panel.removeAll()
         val title = view.collapsedTitle
         if (title != null) {
