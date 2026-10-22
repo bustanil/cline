@@ -22,6 +22,8 @@ import java.util.concurrent.TimeUnit
  */
 class CoreConnectionServer(
     private val token: String,
+    private val workspacePaths: () -> List<String> = { emptyList() },
+    private val onUserMessage: (UserMessage) -> String? = { null },
     private val onConnected: (CoreConnection) -> Unit = {},
 ) {
     private val health = HealthStatusManager()
@@ -36,6 +38,8 @@ class CoreConnectionServer(
             .addService(health.healthService)
             .addService(service)
             .addService(ServerInterceptors.intercept(EnvService().definition(), TokenInterceptor(token)))
+            .addService(ServerInterceptors.intercept(WorkspaceService(workspacePaths).definition(), TokenInterceptor(token)))
+            .addService(ServerInterceptors.intercept(WindowService(onUserMessage).definition(), TokenInterceptor(token)))
             .build()
             .start()
         return this

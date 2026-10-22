@@ -21,7 +21,14 @@ class RealCoreSmokeTest {
         }
         val token = UUID.randomUUID().toString()
         val connected = CountDownLatch(1)
-        val server = CoreConnectionServer(token) { connected.countDown() }.start()
+        var core: CoreConnection? = null
+        val workspace = File.createTempFile("cline-ws", "").also { it.delete(); it.mkdirs() }
+        val userMessages = java.util.concurrent.CopyOnWriteArrayList<UserMessage>()
+        val server = CoreConnectionServer(
+            token,
+            workspacePaths = { listOf(workspace.path) },
+            onUserMessage = { userMessages += it; null },
+        ) { core = it; connected.countDown() }.start()
         val log = File.createTempFile("cline-core", ".log")
         val process = ProcessBuilder(System.getenv("CLINE_NODE") ?: "node", coreJs)
             .redirectErrorStream(true)
@@ -38,6 +45,20 @@ class RealCoreSmokeTest {
             val ok = connected.await(90, TimeUnit.SECONDS)
             assertTrue(ok, "core did not connect; log:\n" + log.readText().takeLast(3000))
             println("CONNECTED: core said hello and got ready")
+            val state = core!!.call("cline.StateService", "getLatestState").get(60, TimeUnit.SECONDS)
+            println("STATE: " + state.length + " chars; starts " + state.take(200))
+            assertTrue(state.contains("stateJson"), "state response: " + state.take(300))
+
+            // A task with no provider credential fails, and the failure must reach the transcript.
+            val store = bot.cline.jetbrains.chat.ChatStore(core!!)
+            store.start().get(60, TimeUnit.SECONDS)
+            store.newTask("say hello").get(60, TimeUnit.SECONDS)
+            val deadline = System.currentTimeMillis() + 60_000
+            while (System.currentTimeMillis() < deadline && store.snapshot.messages.size < 2) Thread.sleep(250)
+            val kinds = store.snapshot.messages.map { (it.raw.get("type")?.asString ?: "?") + "/" + (it.raw.get("say") ?: it.raw.get("ask")) }
+            println("TRANSCRIPT: " + kinds + " turn=" + store.snapshot.turnState?.phase + " userMessages=" + userMessages.map { it.type + ":" + it.text.take(80) })
+            assertTrue(store.snapshot.messages.isNotEmpty(), "no messages arrived after newTask")
+            store.stop()
         } finally {
             process.destroy()
             process.waitFor(5, TimeUnit.SECONDS)

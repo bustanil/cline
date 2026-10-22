@@ -17,6 +17,7 @@ dependencies {
     implementation("io.grpc:grpc-services:$grpcVersion")
     implementation("com.google.protobuf:protobuf-java:$protobufVersion")
     implementation("com.google.protobuf:protobuf-java-util:$protobufVersion")
+    implementation("com.google.code.gson:gson:2.11.0")
 
     testImplementation(kotlin("test"))
 }
@@ -32,6 +33,8 @@ sourceSets {
             srcDir("../vscode/proto")
             include("host/core_connection.proto")
             include("host/env.proto")
+            include("host/window.proto")
+            include("host/workspace.proto")
             include("cline/common.proto")
         }
     }
