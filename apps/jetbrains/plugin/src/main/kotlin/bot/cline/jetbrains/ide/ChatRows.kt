@@ -245,7 +245,7 @@ class HtmlRow(item: TranscriptItem, private val context: RowContext) : ChatRow {
             answers.removeAll()
             view.options.forEach { option -> answers.add(JButton(option).apply { addActionListener { context.reply(option) } }) }
         }
-        val shape = listOf(view.collapsedTitle, expanded, view.blocks != null, view.userBubble, view.options, view.quotes)
+        val shape = listOf(view.collapsedTitle, expanded, view.blocks != null, view.userBubble, view.options, view.quotes, view.hasText)
         if (shape != shownShape) layoutParts()
         // Ask the core only about paths not asked about yet; streaming text repeats them.
         for (reference in view.references) {
@@ -270,14 +270,22 @@ class HtmlRow(item: TranscriptItem, private val context: RowContext) : ChatRow {
         add(RoundedPanel(ChatColors.bubble, 14).apply {
             layout = BorderLayout()
             border = JBUI.Borders.empty(4, 6)
-            add(content, BorderLayout.CENTER)
+            if (view.hasText) add(content, BorderLayout.CENTER)
             if (view.quotes.isNotEmpty()) {
                 add(
                     JPanel().apply {
                         layout = javax.swing.BoxLayout(this, javax.swing.BoxLayout.Y_AXIS)
                         isOpaque = false
                         border = JBUI.Borders.empty(2, 4, 4, 4)
-                        view.quotes.forEach { add(quoteBlock(it, 200, widthPx = 240).apply { alignmentX = 0f; border = JBUI.Borders.emptyBottom(4) }) }
+                        view.quotes.forEach { entry ->
+                            add(quoteBlock(entry.quote, 200, widthPx = 240).apply { alignmentX = 0f; border = JBUI.Borders.emptyBottom(4) })
+                            if (entry.reply.isNotBlank()) {
+                                add(
+                                    JBLabel("<html><div style='width:${JBUI.scale(240)}px'>" + entry.reply.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("\n", "<br>") + "</div></html>")
+                                        .apply { alignmentX = 0f; border = JBUI.Borders.empty(0, 0, 8, 0) },
+                                )
+                            }
+                        }
                     },
                     BorderLayout.NORTH,
                 )
@@ -318,7 +326,7 @@ class HtmlRow(item: TranscriptItem, private val context: RowContext) : ChatRow {
 
     private fun layoutParts() {
         layouts++
-        shownShape = listOf(view.collapsedTitle, expanded, view.blocks != null, view.userBubble, view.options, view.quotes)
+        shownShape = listOf(view.collapsedTitle, expanded, view.blocks != null, view.userBubble, view.options, view.quotes, view.hasText)
         panel.removeAll()
         val title = view.collapsedTitle
         if (title != null) {
