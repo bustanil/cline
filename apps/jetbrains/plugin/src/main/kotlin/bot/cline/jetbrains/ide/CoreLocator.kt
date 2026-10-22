@@ -19,9 +19,22 @@ object CoreLocator {
     fun node(settings: ClineSettings.State = ClineSettings.getInstance().state): String? {
         settings.nodePath.takeIf { it.isNotBlank() }?.let { return it.takeIf { path -> File(path).canExecute() } }
         System.getenv("CLINE_NODE")?.takeIf { File(it).canExecute() }?.let { return it }
+        bundledNode()?.let { return it.path }
         pathEntries().map { File(it, "node") }.firstOrNull { it.canExecute() }?.let { return it.path }
         nvmNodes().firstOrNull()?.let { return it.path }
         return nodeCandidates.firstOrNull { File(it).canExecute() }
+    }
+
+    /** The Node shipped inside the plugin for this platform, if this build has one. Made executable if the install dropped the bit. */
+    fun bundledNode(
+        pluginDir: File? = PluginManagerCore.getPlugin(PluginId.getId(PLUGIN_ID))?.pluginPath?.toFile(),
+        target: String? = platformTarget(),
+    ): File? {
+        if (pluginDir == null || target == null) return null
+        val node = File(pluginDir, "node/$target/" + if (target.startsWith("win")) "node.exe" else "node")
+        if (!node.isFile) return null
+        if (!node.canExecute()) node.setExecutable(true, false)
+        return node.takeIf { it.canExecute() }
     }
 
     fun coreJs(settings: ClineSettings.State = ClineSettings.getInstance().state): File? {
