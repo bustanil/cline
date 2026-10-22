@@ -1,0 +1,110 @@
+package bot.cline.jetbrains.ide
+
+import bot.cline.jetbrains.bridge.CoreHost
+import bot.cline.jetbrains.bridge.CoreLaunch
+import bot.cline.jetbrains.chat.ChatStore
+import com.intellij.openapi.Disposable
+import com.intellij.openapi.application.PathManager
+import com.intellij.openapi.components.Service
+import com.intellij.openapi.components.service
+import com.intellij.openapi.diagnostic.logger
+import com.intellij.openapi.project.Project
+import java.io.File
+import java.util.concurrent.CopyOnWriteArrayList
+
+/**
+ * Owns the `cline-core` process for one project and the chat store for its
+ * current connection. The tool window reads [status] and [store] and redraws
+ * when a listener fires.
+ */
+@Service(Service.Level.PROJECT)
+class ClineProjectService(private val project: Project) : Disposable {
+    enum class Status { NOT_STARTED, STARTING, CONNECTED, MISSING_NODE, MISSING_CORE }
+
+    private val listeners = CopyOnWriteArrayList<() -> Unit>()
+    val bridge = IntelliJBridge(project)
+    private var host: CoreHost? = null
+
+    @Volatile
+    var status: Status = Status.NOT_STARTED
+        private set
+
+    @Volatile
+    var store: ChatStore? = null
+        private set
+
+    fun addListener(listener: () -> Unit) {
+        listeners += listener
+    }
+
+    fun removeListener(listener: () -> Unit) {
+        listeners -= listener
+    }
+
+    /** Starts the core if it is not running. Safe to call again, for example after fixing the settings. */
+    @Synchronized
+    fun start() {
+        if (host != null) return
+        val settings = ClineSettings.getInstance().state
+        val node = CoreLocator.node(settings)
+        if (node == null) return fail(Status.MISSING_NODE)
+        val coreJs = CoreLocator.coreJs(settings)
+        if (coreJs == null) return fail(Status.MISSING_CORE)
+
+        val created = CoreHost(
+            CoreLaunch(
+                node = node,
+                coreJs = coreJs,
+                dataDir = settings.dataDir.takeIf { it.isNotBlank() }?.let(::File),
+                ide = bridge,
+                logFile = File(PathManager.getLogPath(), "cline-core.log"),
+            ),
+        )
+        created.onConnected { connection ->
+            val chat = ChatStore(connection)
+            chat.addListener { fire() }
+            store = chat
+            status = Status.CONNECTED
+            chat.start().whenComplete { _, error -> if (error != null) LOG.warn("Cline: loading state failed", error) }
+            fire()
+        }
+        created.onDisconnected {
+            store?.stop()
+            store = null
+            status = Status.STARTING
+            fire()
+        }
+        host = created
+        status = Status.STARTING
+        created.start()
+        fire()
+    }
+
+    /** Stops the core and starts it again, for example after changing the settings. */
+    @Synchronized
+    fun restart() {
+        host?.close()
+        host = null
+        store = null
+        status = Status.NOT_STARTED
+        start()
+    }
+
+    private fun fail(reason: Status) {
+        status = reason
+        fire()
+    }
+
+    private fun fire() = listeners.forEach { it() }
+
+    override fun dispose() {
+        host?.close()
+        host = null
+    }
+
+    companion object {
+        private val LOG = logger<ClineProjectService>()
+
+        fun getInstance(project: Project): ClineProjectService = project.service()
+    }
+}

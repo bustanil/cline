@@ -4,4 +4,11 @@
     <vendor>Cline</vendor>
     <description>Cline for JetBrains IDEs, with a native chat.</description>
     <depends>com.intellij.modules.platform</depends>
+
+    <extensions defaultExtensionNs="com.intellij">
+        <toolWindow id="Cline" anchor="right" factoryClass="bot.cline.jetbrains.ide.ClineToolWindowFactory"/>
+        <applicationConfigurable parentId="tools" instance="bot.cline.jetbrains.ide.ClineSettingsConfigurable"
+                                 id="bot.cline.jetbrains.settings" displayName="Cline"/>
+        <notificationGroup id="Cline" displayType="BALLOON"/>
+    </extensions>
 </idea-plugin>
