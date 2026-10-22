@@ -57,6 +57,9 @@ class ChatPanel(private val project: Project) : JPanel(BorderLayout()), Disposab
             }
         })
     }
+    private val changed = ChangedFilesPanel(project, store = { service.store })
+    private var lastPhase: String? = null
+    private var shownStore: ChatStore? = null
     private val sendButton = JButton("Send").apply { addActionListener { send() } }
     private val listener: () -> Unit = { ApplicationManager.getApplication().invokeLater(::refresh, ModalityState.any()) }
     private val inputListener: (String) -> Unit = { text ->
@@ -79,7 +82,7 @@ class ChatPanel(private val project: Project) : JPanel(BorderLayout()), Disposab
         }
         val footer = JPanel(BorderLayout()).apply {
             border = JBUI.Borders.empty(6)
-            add(buttons, BorderLayout.NORTH)
+            add(JPanel(BorderLayout()).apply { add(changed, BorderLayout.NORTH); add(buttons, BorderLayout.CENTER) }, BorderLayout.NORTH)
             add(inputRow, BorderLayout.CENTER)
         }
         add(top, BorderLayout.NORTH)
@@ -109,11 +112,25 @@ class ChatPanel(private val project: Project) : JPanel(BorderLayout()), Disposab
         if (store == null) {
             clearRows()
             updateButtons(null)
+            shownStore = null
+            lastPhase = null
+            changed.refresh()
             return
         }
         val snapshot = store.snapshot
         syncRows(store, snapshot)
         updateButtons(store)
+        refreshChangedFiles(store, snapshot)
+    }
+
+    /** The core does not push the changed files, so ask when a run ends and when a new connection first shows. */
+    private fun refreshChangedFiles(store: ChatStore, snapshot: ChatSnapshot) {
+        val phase = snapshot.turnState?.phase
+        val firstSight = shownStore !== store
+        val turnEnded = lastPhase == "streaming" && phase != "streaming"
+        shownStore = store
+        lastPhase = phase
+        if (firstSight || turnEnded) changed.refresh()
     }
 
     private fun syncRows(store: ChatStore, snapshot: ChatSnapshot) {

@@ -136,9 +136,14 @@ class ClineProjectService(private val project: Project) : Disposable {
 
     private fun fire() = listeners.forEach { it() }
 
+    @Synchronized
     override fun dispose() {
         host?.close()
         host = null
+        // A store from the closed connection must not be handed out again if the service starts anew.
+        store?.stop()
+        store = null
+        status = Status.NOT_STARTED
     }
 
     companion object {

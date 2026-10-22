@@ -155,6 +155,24 @@ class ChatStore(private val core: CoreApi) {
         }
     }
 
+    /** Files changed since the latest checkpoint. Empty when there is nothing to compare. Asked for on demand: the core does not push it. */
+    fun changedFiles(): CompletableFuture<List<ChangedFile>> =
+        core.call("cline.CheckpointsService", "checkpointLatestChangedFiles").thenApply { ChangedFile.parseList(it) }
+
+    /** Opens the IDE's diff of everything that changed since the latest checkpoint. */
+    fun viewAllChanges(): CompletableFuture<String> = core.call("cline.CheckpointsService", "checkpointViewLatestChanges")
+
+    /** Opens the diff of one changed file ([ChangedFile.path] is absolute). */
+    fun viewFileChanges(path: String): CompletableFuture<String> =
+        core.call("cline.CheckpointsService", "checkpointViewFileChanges", JsonObject().apply { addProperty("value", path) }.toString())
+
+    /**
+     * Restores one file to its content at the latest checkpoint, or deletes it if the agent created it.
+     * The agent is not told; it sees the restored file the next time it reads it.
+     */
+    fun revertFile(path: String): CompletableFuture<String> =
+        core.call("cline.CheckpointsService", "checkpointRevertFile", JsonObject().apply { addProperty("value", path) }.toString())
+
     private fun onStatePayload(payload: String) {
         val state = runCatching {
             JsonParser.parseString(JsonParser.parseString(payload).asJsonObject.get("stateJson").asString).asJsonObject

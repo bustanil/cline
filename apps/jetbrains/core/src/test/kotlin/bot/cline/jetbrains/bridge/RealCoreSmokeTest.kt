@@ -63,6 +63,10 @@ class RealCoreSmokeTest {
             assertTrue(opened.any { it.first.endsWith("/a.txt") && it.second == 2 && it.third == 3 }, "bridge got $opened")
             println("LINK: " + link + " opened=" + opened)
 
+            // With no checkpoint yet, the changed-files call answers with an empty list rather than an error.
+            val none = bot.cline.jetbrains.chat.ChatStore(core!!).changedFiles().get(30, TimeUnit.SECONDS)
+            assertTrue(none.isEmpty(), "changed files before any task: $none")
+
             // A task with no provider credential fails, and the failure must reach the transcript.
             val store = bot.cline.jetbrains.chat.ChatStore(core!!)
             store.start().get(60, TimeUnit.SECONDS)
