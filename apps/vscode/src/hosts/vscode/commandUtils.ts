@@ -115,11 +115,16 @@ export async function getContextForCommand(
 		vscodeDiagnostics ??
 		vscode.languages.getDiagnostics(editor.document.uri).filter((d) => d.range.intersection(intentRange) !== undefined)
 	const diagnostics = convertVscodeDiagnostics(effectiveDiagnostics)
+	// A selection that ends at column 0 of the next line doesn't include that line
+	const lastSelectedLine =
+		textRange.end.character === 0 && textRange.end.line > textRange.start.line ? textRange.end.line - 1 : textRange.end.line
 	const commandContext: CommandContext = {
 		selectedText,
 		filePath,
 		diagnostics,
 		language,
+		startLine: selectedText ? textRange.start.line + 1 : undefined,
+		endLine: selectedText ? lastSelectedLine + 1 : undefined,
 	}
 
 	return { controller, commandContext }

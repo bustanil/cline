@@ -4,6 +4,7 @@ import { telemetryService } from "@/services/telemetry"
 import { CommandContext, Empty } from "@/shared/proto/index.cline"
 import { ShowMessageType } from "@/shared/proto/index.host"
 import { Logger } from "@/shared/services/Logger"
+import { formatLineRange } from "@/utils/file-reference"
 import { Controller } from "../index"
 
 export async function improveWithCline(
@@ -25,7 +26,7 @@ export async function improveWithCline(
 
 	// Build prompt
 	let prompt = hasSelectedText
-		? `Improve the following code from ${fileMention} (e.g., suggest refactorings, optimizations, or better practices):\n\`\`\`${request.language}\n${request.selectedText}\n\`\`\``
+		? `Improve the following code from ${fileMention}${formatLineRange(request.startLine, request.endLine)} (e.g., suggest refactorings, optimizations, or better practices):\n\`\`\`${request.language}\n${request.selectedText}\n\`\`\``
 		: `Improve the current code in the current notebook cell from ${fileMention}. Suggest refactorings, optimizations, or better practices based on the cell context.`
 
 	if (notebookContext) {

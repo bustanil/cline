@@ -3,6 +3,7 @@ import { singleFileDiagnosticsToProblemsString } from "@/integrations/diagnostic
 import { telemetryService } from "@/services/telemetry"
 import { CommandContext, Empty } from "@/shared/proto/index.cline"
 import { Logger } from "@/shared/services/Logger"
+import { formatLineRange } from "@/utils/file-reference"
 import { Controller } from "../index"
 
 export async function fixWithCline(controller: Controller, request: CommandContext): Promise<Empty> {
@@ -11,7 +12,7 @@ export async function fixWithCline(controller: Controller, request: CommandConte
 	const problemsString = await singleFileDiagnosticsToProblemsString(filePath, request.diagnostics)
 
 	await controller.initTask(
-		`Fix the following code in ${fileMention}
+		`Fix the following code in ${fileMention}${formatLineRange(request.startLine, request.endLine)}
 \`\`\`\n${request.selectedText}\n\`\`\`\n\nProblems:\n${problemsString}`,
 	)
 	Logger.log("fixWithCline", request.selectedText, request.filePath, request.language, problemsString)

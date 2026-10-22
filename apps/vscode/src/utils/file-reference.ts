@@ -38,6 +38,20 @@ export function parseFileReference(text: string): FileReference | undefined {
 	}
 }
 
+/**
+ * Describes a line range for a prompt, e.g. " (lines 12-20)" or " (line 7)".
+ * Returns "" when the start line is unknown.
+ */
+export function formatLineRange(startLine?: number, endLine?: number): string {
+	if (!startLine || startLine < 1) {
+		return ""
+	}
+	if (!endLine || endLine <= startLine) {
+		return ` (line ${startLine})`
+	}
+	return ` (lines ${startLine}-${endLine})`
+}
+
 function expandHome(filePath: string): string {
 	if (filePath === "~") {
 		return os.homedir()

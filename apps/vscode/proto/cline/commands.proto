@@ -29,4 +29,7 @@ message CommandContext {
   optional string language = 3;
   // Any diagnostic problems for the current file.
   repeated cline.Diagnostic diagnostics = 4;
+  // Lines of the selected text, 1-based and inclusive. Unset when unknown.
+  optional int32 start_line = 5;
+  optional int32 end_line = 6;
 }

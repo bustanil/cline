@@ -3,6 +3,7 @@ import { singleFileDiagnosticsToProblemsString } from "@/integrations/diagnostic
 import { telemetryService } from "@/services/telemetry"
 import { CommandContext, Empty } from "@/shared/proto/index.cline"
 import { Logger } from "@/shared/services/Logger"
+import { formatLineRange } from "@/utils/file-reference"
 import { Controller } from "../index"
 import { sendAddToInputEvent } from "../ui/subscribeToAddToInput"
 
@@ -17,7 +18,7 @@ export async function addToCline(controller: Controller, request: CommandContext
 	const filePath = request.filePath || ""
 	const fileMention = await getFileMentionFromPath(filePath)
 
-	let input = `${fileMention}\n\`\`\`\n${request.selectedText}\n\`\`\``
+	let input = `${fileMention}${formatLineRange(request.startLine, request.endLine)}\n\`\`\`\n${request.selectedText}\n\`\`\``
 
 	// Add notebook context if provided (includes cell JSON)
 	if (notebookContext) {

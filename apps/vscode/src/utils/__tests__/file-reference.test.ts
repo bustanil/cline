@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 import * as fs from "fs"
 import * as os from "os"
 import * as path from "path"
-import { parseFileReference, resolveReferencedFile } from "../file-reference"
+import { formatLineRange, parseFileReference, resolveReferencedFile } from "../file-reference"
 
 describe("parseFileReference", () => {
 	it("returns a plain path without lines", () => {
@@ -85,5 +85,15 @@ describe("resolveReferencedFile", () => {
 	it("returns undefined for missing files and directories", () => {
 		expect(resolveReferencedFile("nope.ts", [rootA, rootB])).toBeUndefined()
 		expect(resolveReferencedFile("src", [rootB])).toBeUndefined()
+	})
+})
+
+describe("formatLineRange", () => {
+	it("describes a range, a single line, or nothing", () => {
+		expect(formatLineRange(12, 20)).toBe(" (lines 12-20)")
+		expect(formatLineRange(7, 7)).toBe(" (line 7)")
+		expect(formatLineRange(7)).toBe(" (line 7)")
+		expect(formatLineRange(undefined, 9)).toBe("")
+		expect(formatLineRange(0, 3)).toBe("")
 	})
 })
