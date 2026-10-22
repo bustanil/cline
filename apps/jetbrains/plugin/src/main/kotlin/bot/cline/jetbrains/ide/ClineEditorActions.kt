@@ -10,6 +10,7 @@ import com.intellij.openapi.actionSystem.CommonDataKeys
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.project.DumbAware
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.project.guessProjectDir
 import com.intellij.openapi.editor.Editor
 import com.intellij.openapi.wm.ToolWindowManager
 
@@ -19,14 +20,20 @@ abstract class ClineEditorAction(private val command: EditorCommand) : AnAction(
 
     override fun update(e: AnActionEvent) {
         val editor = e.getData(CommonDataKeys.EDITOR)
-        // Add, explain and improve need code selected; fix may use the caret's line.
+        // Explain and improve need code selected; fix may use the caret's line, and add points at the caret's line.
         e.presentation.isEnabledAndVisible = e.project != null && editor != null &&
-            (editor.selectionModel.hasSelection() || command == EditorCommand.FIX)
+            (editor.selectionModel.hasSelection() || command == EditorCommand.FIX || command == EditorCommand.ADD_TO_CHAT)
     }
 
     override fun actionPerformed(e: AnActionEvent) {
         val project = e.project ?: return
         val editor = e.getData(CommonDataKeys.EDITOR) ?: return
+        if (command == EditorCommand.ADD_TO_CHAT && !editor.selectionModel.hasSelection()) {
+            val pointer = FileMentions.pointer(project, editor) ?: return
+            ToolWindowManager.getInstance(project).getToolWindow(OpenClineAction.TOOL_WINDOW_ID)?.show()
+            ClineProjectService.getInstance(project).addToInput(pointer)
+            return
+        }
         send(project, editor, command)
     }
 
@@ -62,3 +69,43 @@ class FixWithClineAction : ClineEditorAction(EditorCommand.FIX)
 class ExplainWithClineAction : ClineEditorAction(EditorCommand.EXPLAIN)
 
 class ImproveWithClineAction : ClineEditorAction(EditorCommand.IMPROVE)
+
+/** Puts the files and folders picked in the project tree into the chat as `@` mentions. */
+class AddFilesToClineAction : AnAction(), DumbAware {
+    override fun getActionUpdateThread() = ActionUpdateThread.BGT
+
+    override fun update(e: AnActionEvent) {
+        val files = e.getData(CommonDataKeys.VIRTUAL_FILE_ARRAY)
+        e.presentation.isEnabledAndVisible = e.project != null && !files.isNullOrEmpty()
+    }
+
+    override fun actionPerformed(e: AnActionEvent) {
+        val project = e.project ?: return
+        val files = e.getData(CommonDataKeys.VIRTUAL_FILE_ARRAY) ?: return
+        val mentions = files.mapNotNull { FileMentions.mention(project, it) }
+        if (mentions.isEmpty()) return
+        ToolWindowManager.getInstance(project).getToolWindow(OpenClineAction.TOOL_WINDOW_ID)?.show()
+        ClineProjectService.getInstance(project).addToInput(mentions.joinToString(" ") + " ")
+    }
+}
+
+/** The `@` text for a file, a folder or a line, relative to the project folder. */
+object FileMentions {
+    /** `@/src/a.kt`, or `@/src/` for a folder; null for a file outside the project. */
+    fun mention(project: Project, file: com.intellij.openapi.vfs.VirtualFile): String? {
+        val relative = relativePath(project, file) ?: return null
+        return bot.cline.jetbrains.chat.MentionMatch(relative, file.isDirectory, null).text()
+    }
+
+    /** `@/src/a.kt:12` for the caret's line (1-based). */
+    fun pointer(project: Project, editor: Editor): String? {
+        val file = com.intellij.openapi.fileEditor.FileDocumentManager.getInstance().getFile(editor.document) ?: return null
+        val relative = relativePath(project, file) ?: return null
+        return "@/$relative:${editor.caretModel.logicalPosition.line + 1} "
+    }
+
+    private fun relativePath(project: Project, file: com.intellij.openapi.vfs.VirtualFile): String? {
+        val base = project.guessProjectDir() ?: return null
+        return com.intellij.openapi.vfs.VfsUtilCore.getRelativePath(file, base, '/')?.takeIf { it.isNotEmpty() }
+    }
+}

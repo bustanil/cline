@@ -53,6 +53,20 @@ class ChatPanel(private val project: Project) : JPanel(BorderLayout()), Disposab
     private val secondary = JButton().apply { addActionListener { run(Slot.SECONDARY) } }
     private val approve = AutoApproveBar { service.store }
     private val changed = ChangedFilesPanel(project, store = { service.store })
+    // Closing the button bar hides it until the buttons or the conversation change.
+    private var dismissedFor: String? = null
+    private var buttonKey: String? = null
+    private val dismiss = JBLabel(com.intellij.icons.AllIcons.Actions.Close).apply {
+        toolTipText = "Dismiss"
+        cursor = java.awt.Cursor.getPredefinedCursor(java.awt.Cursor.HAND_CURSOR)
+        border = JBUI.Borders.empty(4)
+        addMouseListener(object : java.awt.event.MouseAdapter() {
+            override fun mouseClicked(e: java.awt.event.MouseEvent) {
+                dismissedFor = buttonKey
+                service.store?.let { updateButtons(it) }
+            }
+        })
+    }
     private var lastPhase: String? = null
     private var shownStore: ChatStore? = null
     private val composer: Composer = Composer(project, store = { service.store }, onSubmit = { text, images, files -> sendMessage(text, images, files) })
@@ -91,7 +105,10 @@ class ChatPanel(private val project: Project) : JPanel(BorderLayout()), Disposab
         val top = JPanel(BorderLayout()).apply {
             add(JPanel(FlowLayout(FlowLayout.LEFT)).apply { add(notice); add(settingsButton) }, BorderLayout.CENTER)
         }
-        val buttons = JPanel(FlowLayout(FlowLayout.LEFT)).apply { add(primary); add(secondary) }
+        val buttons = JPanel(BorderLayout()).apply {
+            add(JPanel(FlowLayout(FlowLayout.LEFT)).apply { add(primary); add(secondary) }, BorderLayout.CENTER)
+            add(dismiss, BorderLayout.EAST)
+        }
         val footer = JPanel(BorderLayout()).apply {
             border = JBUI.Borders.empty(0, 0, 4, 0)
             background = ChatColors.page
@@ -209,8 +226,15 @@ class ChatPanel(private val project: Project) : JPanel(BorderLayout()), Disposab
 
     private fun updateButtons(store: ChatStore?) {
         val config = store?.buttons()
-        primary.isVisible = config?.primaryText != null
-        secondary.isVisible = config?.secondaryText != null
+        val key = config?.let { "${it.primaryText}|${it.secondaryText}|${store.snapshot.messages.lastOrNull()?.ts}" }
+        if (key != buttonKey) {
+            buttonKey = key
+            dismissedFor = null
+        }
+        val shown = config != null && dismissedFor != key
+        primary.isVisible = shown && config?.primaryText != null
+        secondary.isVisible = shown && config?.secondaryText != null
+        dismiss.isVisible = shown && (config?.primaryText != null || config?.secondaryText != null)
         primary.text = config?.primaryText
         secondary.text = config?.secondaryText
         primary.isEnabled = config?.enableButtons == true

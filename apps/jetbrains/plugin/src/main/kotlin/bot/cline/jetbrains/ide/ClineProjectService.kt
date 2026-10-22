@@ -52,6 +52,9 @@ class ClineProjectService(private val project: Project) : Disposable {
         inputListeners -= listener
     }
 
+    /** Puts [text] in the composer of this project's chat, holding it until the chat exists if it does not yet. */
+    fun addToInput(text: String) = deliverInput(text)
+
     private fun deliverInput(text: String) {
         if (inputListeners.isEmpty()) {
             synchronized(pendingInput) { if (pendingInput.isNotEmpty()) pendingInput.append("\n\n"); pendingInput.append(text) }

@@ -37,5 +37,9 @@
                     description="Ask Cline to improve the selected code"/>
             <add-to-group group-id="EditorPopupMenu" anchor="first"/>
         </group>
+        <action id="ClineNative.AddFiles" class="bot.cline.jetbrains.ide.AddFilesToClineAction" text="Add to Cline"
+                description="Mention the selected files or folders in the Cline chat" icon="/icons/cline.svg">
+            <add-to-group group-id="ProjectViewPopupMenu" anchor="after" relative-to-action="CutCopyPasteGroup"/>
+        </action>
     </actions>
 </idea-plugin>
