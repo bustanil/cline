@@ -46,10 +46,9 @@ class ActivityRowTest : BasePlatformTestCase() {
         }
     }
 
-    private fun paint(component: JComponent, name: String) {
+    private fun paint(component: JComponent, name: String, width: Int = 760) {
         val dir = System.getenv("CLINE_SNAPSHOT_DIR") ?: return
         UIUtil.dispatchAllInvocationEvents()
-        val width = 760
         // A row's height depends on its width, so lay out again until the height stops changing.
         var height = 10
         repeat(8) {
@@ -185,6 +184,34 @@ class ActivityRowTest : BasePlatformTestCase() {
         for (m in listOf(hello, reply, explain)) convo.add(HtmlRow(TranscriptItem.Single(m), RowContext(FileLinks(Core()))).component)
         convo.add(row("idle").component)
         paint(convo, "conversation")
+    }
+
+    fun `test the transcript is as wide as the viewport even when a row wants more`() {
+        val transcript = TranscriptPanel().apply { layout = javax.swing.BoxLayout(this, javax.swing.BoxLayout.Y_AXIS) }
+        transcript.add(javax.swing.JPanel().apply { preferredSize = Dimension(1400, 40); minimumSize = Dimension(1400, 40) })
+        val scroll = com.intellij.ui.components.JBScrollPane(transcript).apply {
+            horizontalScrollBarPolicy = javax.swing.ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER
+            setSize(420, 300)
+        }
+        scroll.doLayout()
+        layoutAll(scroll)
+        assertTrue("viewport ${scroll.viewport.width}", scroll.viewport.width in 380..420)
+        assertEquals(scroll.viewport.width, transcript.width)
+        assertTrue(transcript.scrollableTracksViewportWidth)
+    }
+
+    fun `test snapshot at a narrow width`() {
+        val text = "The unchecked cast is justified by the router contract: the router only returned this acquirer because it *is* an `AuthCaptureAcquirer`.\n\n**4. Ledger posting** happens only after the payment reaches `CAPTURED`, in its own transaction (`postIfCaptured`), debiting the acquirer's receivable account and crediting the merchant payable account.\n\n## Who implements it\n\n- `FakeAcquirer` (`routing.infrastructure.fakeacquirer`) — implements **both** `PurchaseAcquirer` and `AuthCaptureAcquirer`.\n\n| Domain method | REST call | Behavior here |\n|---|---|---|\n| `authorize` | `POST /authorize` | Card number decides; `4000...9995` → INSUFFICIENT_FUNDS |\n| `capture` | `POST /capture` | Always approved |"
+        val message = ChatMessage(JsonObject().apply { addProperty("ts", 7); addProperty("type", "say"); addProperty("say", "text"); addProperty("text", text) })
+        val transcript = TranscriptPanel().apply { layout = javax.swing.BoxLayout(this, javax.swing.BoxLayout.Y_AXIS); isOpaque = true; background = ChatColors.page }
+        transcript.add(HtmlRow(TranscriptItem.Single(message), RowContext(FileLinks(Core()), highlighter = IdeCodeHighlighter(project))).component)
+        paint(transcript, "narrow", width = 420)
+    }
+
+    fun `test snapshot of headings`() {
+        val text = "# Heading 1 (Who implements it)\n\nBody text under the first heading, with `inline code` in it.\n\n## Heading 2 (Mapping onto this repo's endpoints)\n\nMore body text here.\n\n### Heading 3 (Execution)\n\nText.\n\n#### Heading 4\n\nLast line of body text."
+        val message = ChatMessage(JsonObject().apply { addProperty("ts", 6); addProperty("type", "say"); addProperty("say", "text"); addProperty("text", text) })
+        paint(HtmlRow(TranscriptItem.Single(message), RowContext(FileLinks(Core()))).component, "headings")
     }
 
     fun `test inline code style previews`() {

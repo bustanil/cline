@@ -41,6 +41,16 @@ object ChatColors {
     val codeBackground: JBColor = JBColor(0xF8F7F5, 0x34332F)
     val codeText: JBColor = JBColor(0x5E4D47, 0xCDBDB4)
 
+    /** CSS for `#` headings: a little larger than body text, not a page title. */
+    val headingRules: List<String> = listOf(
+        "h1 { font-size: 125%; font-weight: bold; margin-top: 10px; margin-bottom: 4px; }",
+        "h2 { font-size: 115%; font-weight: bold; margin-top: 10px; margin-bottom: 4px; }",
+        "h3 { font-size: 105%; font-weight: bold; margin-top: 8px; margin-bottom: 3px; }",
+        "h4 { font-size: 100%; font-weight: bold; margin-top: 8px; margin-bottom: 3px; }",
+        "h5 { font-size: 100%; font-weight: bold; margin-top: 6px; margin-bottom: 2px; }",
+        "h6 { font-size: 100%; font-weight: bold; margin-top: 6px; margin-bottom: 2px; }",
+    )
+
     /** The CSS rule for inline code (`like this`). */
     fun inlineCodeRule(): String = "code { background-color: ${ColorUtil.toHtmlColor(codeBackground)}; color: ${ColorUtil.toHtmlColor(codeText)}; font-size: 95%; }"
     /** What the user wrote: a bubble a little darker than the page. */
@@ -99,6 +109,8 @@ internal fun newHtmlPane(inlineCodeRule: String = ChatColors.inlineCodeRule(), o
         border = JBUI.Borders.empty(2, 10)
         // Tight lists: the default gives each bullet the gap of a paragraph.
         (editorKit as? javax.swing.text.html.HTMLEditorKit)?.styleSheet?.addRule(inlineCodeRule)
+        // Headings stay close to body size, as in the Claude Code app, and are bold with tight spacing.
+        for (rule in ChatColors.headingRules) (editorKit as? javax.swing.text.html.HTMLEditorKit)?.styleSheet?.addRule(rule)
         (editorKit as? javax.swing.text.html.HTMLEditorKit)?.styleSheet?.addRule("li { margin-top: 0px; margin-bottom: 0px; } ul { margin-top: 2px; margin-bottom: 2px; } ol { margin-top: 2px; margin-bottom: 2px; }")
         addHyperlinkListener { event -> if (event.eventType == HyperlinkEvent.EventType.ACTIVATED) onLink(event.description ?: event.url?.toString()) }
     }

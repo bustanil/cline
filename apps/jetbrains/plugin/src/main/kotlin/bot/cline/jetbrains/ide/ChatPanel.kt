@@ -34,7 +34,7 @@ import javax.swing.ScrollPaneConstants
 class ChatPanel(private val project: Project) : JPanel(BorderLayout()), Disposable {
     private val service = ClineProjectService.getInstance(project)
     private val rows = LinkedHashMap<Long, ChatRow>()
-    private val transcript = JPanel().apply {
+    private val transcript = TranscriptPanel().apply {
         layout = BoxLayout(this, BoxLayout.Y_AXIS)
         isOpaque = true
         background = ChatColors.page
@@ -291,4 +291,21 @@ class ChatPanel(private val project: Project) : JPanel(BorderLayout()), Disposab
         service.removeListener(listener)
         service.removeInputListener(inputListener)
     }
+}
+
+/**
+ * The column of rows. It is as wide as the viewport and no wider, so text wraps to what is visible
+ * instead of running off the right edge when one row (a wide table, a long path) wants more room.
+ */
+class TranscriptPanel : JPanel(), javax.swing.Scrollable {
+    override fun getPreferredScrollableViewportSize(): java.awt.Dimension = preferredSize
+
+    override fun getScrollableUnitIncrement(visibleRect: java.awt.Rectangle, orientation: Int, direction: Int): Int = JBUI.scale(24)
+
+    override fun getScrollableBlockIncrement(visibleRect: java.awt.Rectangle, orientation: Int, direction: Int): Int =
+        (if (orientation == javax.swing.SwingConstants.VERTICAL) visibleRect.height else visibleRect.width) - JBUI.scale(24)
+
+    override fun getScrollableTracksViewportWidth(): Boolean = true
+
+    override fun getScrollableTracksViewportHeight(): Boolean = false
 }
