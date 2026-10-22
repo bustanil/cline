@@ -370,8 +370,12 @@ class Composer(
         input.addKeyListener(object : KeyAdapter() {
             override fun keyPressed(e: KeyEvent) {
                 if (keyHandler?.invoke(e) == true) return
-                if (e.keyCode == KeyEvent.VK_ENTER && !e.isShiftDown && !e.isConsumed) {
-                    e.consume()
+                if (e.keyCode != KeyEvent.VK_ENTER || e.isConsumed) return
+                e.consume()
+                if (e.isShiftDown || e.isAltDown) {
+                    // A text area binds only a plain Enter to a new line, so Shift+Enter (and Alt+Enter) would do nothing.
+                    input.replaceSelection("\n")
+                } else {
                     submit()
                 }
             }

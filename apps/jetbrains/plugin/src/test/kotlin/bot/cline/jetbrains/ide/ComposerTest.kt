@@ -145,8 +145,14 @@ class ComposerTest : BasePlatformTestCase() {
     fun `test Enter sends and Shift Enter does not and the key hook goes first`() {
         val c = composer()
         c.input.text = "one"
-        key(c, KeyEvent.VK_ENTER, shift = true)
+        c.input.caretPosition = 3
+        val shiftEnter = key(c, KeyEvent.VK_ENTER, shift = true)
         assertTrue(sent.isEmpty())
+        assertTrue("Shift+Enter is handled, not passed on", shiftEnter.isConsumed)
+        assertEquals("Shift+Enter adds a line break", "one\n", c.input.text)
+        c.input.replaceSelection("two")
+        assertEquals("one\ntwo", c.input.text)
+        c.input.text = "one"
         val enter = key(c, KeyEvent.VK_ENTER)
         assertTrue(enter.isConsumed)
         assertEquals("one", sent.single().first)
@@ -154,6 +160,24 @@ class ComposerTest : BasePlatformTestCase() {
         c.keyHandler = { true }
         key(c, KeyEvent.VK_ENTER)
         assertEquals(1, sent.size)
+    }
+
+    fun `test Shift Enter breaks the line at the caret and replaces a selection`() {
+        val c = composer()
+        c.input.text = "hello world"
+        c.input.caretPosition = 5
+        key(c, KeyEvent.VK_ENTER, shift = true)
+        assertEquals("hello\n world", c.input.text)
+        c.input.select(0, 5)
+        key(c, KeyEvent.VK_ENTER, shift = true)
+        assertEquals("\n\n world", c.input.text)
+        assertTrue("nothing was sent", sent.isEmpty())
+        // Alt+Enter does the same, as it does in other chat boxes.
+        c.input.text = "a"
+        c.input.caretPosition = 1
+        val alt = KeyEvent(c.input, KeyEvent.KEY_PRESSED, 0, KeyEvent.ALT_DOWN_MASK, KeyEvent.VK_ENTER, KeyEvent.CHAR_UNDEFINED)
+        c.input.keyListeners.forEach { it.keyPressed(alt) }
+        assertEquals("a\n", c.input.text)
     }
 
     fun `test nothing is sent while disconnected`() {
