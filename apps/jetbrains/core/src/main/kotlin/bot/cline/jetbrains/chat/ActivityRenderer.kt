@@ -42,7 +42,7 @@ object ActivityRenderer {
         if (m.isSay("reasoning")) {
             val text = m.text()
             val verb = if (running) "Thinking" else "Thought"
-            return ActivityStep(m.ts, running, verb, "", verb, false, MarkdownHtml.fileCandidates(text), isThinking = true) { links -> MarkdownHtml.render(text, links) }
+            return ActivityStep(m.ts, running, verb, "", verb, false, MarkdownHtml.fileCandidates(text), isThinking = true) { links -> RowRenderer.subtle(MarkdownHtml.render(text, links), colors) }
         }
         if (m.isCommand()) {
             val info = CommandInfo.parse(m)

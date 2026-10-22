@@ -321,3 +321,25 @@ class QuoteSplitTest {
         assertTrue(!view.html(emptyMap()).contains("[context]"))
     }
 }
+
+class ThinkingStyleTest {
+    @Test
+    fun `thinking is drawn italic and muted`() {
+        val m = ChatMessage(
+            JsonObject().apply {
+                addProperty("ts", 1)
+                addProperty("type", "say")
+                addProperty("say", "reasoning")
+                addProperty("text", "I should look at the module first.")
+            },
+        )
+        val colors = RowColors(muted = "#8a8a8a")
+        val view = RowRenderer.render(TranscriptItem.Single(m), colors)
+        val html = view.html(emptyMap())
+        assertTrue(html.contains("<i>") && html.contains("#8a8a8a"), html)
+        val blocks = view.blocks!!(emptyMap())
+        assertTrue(blocks.all { it.html.contains("<i>") }, blocks.toString())
+        val step = ActivityRenderer.render(TranscriptItem.Activity(listOf(m), running = false), colors).steps.single()
+        assertTrue(step.detailHtml(emptyMap()).contains("<i>"))
+    }
+}

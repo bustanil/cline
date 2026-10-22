@@ -61,7 +61,7 @@ object RowRenderer {
                 markdown(null, if (quotes.isEmpty()) m else m.withText(rest), c, highlighter).copy(userBubble = true, attachments = attachmentsOf(m), quotes = quotes, hasText = quotes.isEmpty() || rest.isNotBlank())
             }
             m.isSay("text") || m.isSay("plan_completion_result") -> markdown(null, m, c, highlighter)
-            m.isSay("reasoning") -> markdown(null, m, c, highlighter).copy(collapsedTitle = "Thinking")
+            m.isSay("reasoning") -> markdown(null, m, c, highlighter, subtle = true).copy(collapsedTitle = "Thinking")
             m.isSay("completion_result") || m.isAsk("completion_result") -> markdown("✓ Task completed", m, c, highlighter)
             m.isSay("tool") || m.isAsk("tool") -> tool(m, c)
             m.isUseMcp() -> McpInfo.parse(m).let { info -> RowView(emptyList(), { mcpHtml(info, c, asking = m.isAsk("use_mcp_server")) }) }
@@ -82,15 +82,19 @@ object RowRenderer {
         return images + files
     }
 
+    /** The model's thinking: italic and in the muted color, so it reads as a side note beside the answer. */
+    internal fun subtle(html: String, c: RowColors): String = "<i><font color=\"${c.muted}\">$html</font></i>"
+
     private fun codeStyle(c: RowColors, highlighter: CodeHighlighter?) = CodeBlockStyle(c.codeBackground, c.codeBorder, c.tableHeader, highlighter)
 
-    private fun markdown(title: String?, m: ChatMessage, c: RowColors, highlighter: CodeHighlighter?): RowView {
+    private fun markdown(title: String?, m: ChatMessage, c: RowColors, highlighter: CodeHighlighter?, subtle: Boolean = false): RowView {
         val text = m.text()
+        val tone: (String) -> String = if (subtle) { html -> subtle(html, c) } else { html -> html }
         val heading = title?.let { listOf(MarkdownHtml.Block(MarkdownHtml.BlockKind.TEXT, "<p><b>${escape(it)}</b></p>")) }.orEmpty()
         return RowView(
             MarkdownHtml.fileCandidates(text),
-            { links -> (title?.let { "<p><b>${escape(it)}</b></p>" } ?: "") + MarkdownHtml.render(text, links, codeStyle(c, highlighter)) },
-            blocks = { links -> heading + MarkdownHtml.blocks(text, links, codeStyle(c, highlighter)) },
+            { links -> (title?.let { "<p><b>${escape(it)}</b></p>" } ?: "") + tone(MarkdownHtml.render(text, links, codeStyle(c, highlighter))) },
+            blocks = { links -> heading + MarkdownHtml.blocks(text, links, codeStyle(c, highlighter)).map { if (it.kind == MarkdownHtml.BlockKind.TEXT) it.copy(html = tone(it.html)) else it } },
         )
     }
 
