@@ -1,4 +1,5 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { ChangedFile, ChangedFileStatus } from "@shared/proto/cline/checkpoints"
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import { CompletionOutputRow } from "./CompletionOutputRow"
 import PlanCompletionOutputRow from "./PlanCompletionOutputRow"
@@ -11,14 +12,27 @@ vi.mock("@/components/common/MarkdownBlock", () => ({
 	default: ({ markdown }: { markdown: string }) => <div>{markdown}</div>,
 }))
 
-const checkpointLatestChangesCount = vi.fn()
+const checkpointLatestChangedFiles = vi.fn()
+const checkpointViewFileChanges = vi.fn(() => Promise.resolve({}))
+const checkpointRevertFile = vi.fn(() => Promise.resolve({}))
+const openFileLocation = vi.fn(() => Promise.resolve({}))
 
 vi.mock("@/services/grpc-client", () => ({
 	CheckpointsServiceClient: {
-		checkpointLatestChangesCount: (...args: unknown[]) => checkpointLatestChangesCount(...args),
+		checkpointLatestChangedFiles: (...args: unknown[]) => checkpointLatestChangedFiles(...args),
 		checkpointViewLatestChanges: vi.fn(() => Promise.resolve({})),
+		checkpointViewFileChanges: (...args: unknown[]) => checkpointViewFileChanges(...(args as [])),
+		checkpointRevertFile: (...args: unknown[]) => checkpointRevertFile(...(args as [])),
+	},
+	FileServiceClient: {
+		openFileLocation: (...args: unknown[]) => openFileLocation(...(args as [])),
 	},
 }))
+
+const changed = (relativePath: string, status = ChangedFileStatus.CHANGED_FILE_MODIFIED, added = 3, removed = 1) =>
+	ChangedFile.create({ path: `/repo/${relativePath}`, relativePath, status, addedLines: added, removedLines: removed })
+
+const withFiles = (...files: ChangedFile[]) => ({ files })
 
 // Render VSCodeButton (used by SuccessButton) as a native button so it is
 // observable through testing-library roles.
@@ -70,7 +84,10 @@ describe("CompletionOutputRow", () => {
 
 describe("CompletionOutputRow View Changes", () => {
 	beforeEach(() => {
-		checkpointLatestChangesCount.mockReset()
+		checkpointLatestChangedFiles.mockReset()
+		checkpointViewFileChanges.mockClear()
+		checkpointRevertFile.mockClear()
+		openFileLocation.mockClear()
 	})
 
 	const renderWithViewChanges = () =>
@@ -84,7 +101,7 @@ describe("CompletionOutputRow View Changes", () => {
 		)
 
 	it("shows the button once the host confirms the latest run changed files", async () => {
-		checkpointLatestChangesCount.mockResolvedValue({ value: 2 })
+		checkpointLatestChangedFiles.mockResolvedValue(withFiles(changed("src/a.ts"), changed("src/b.ts")))
 
 		renderWithViewChanges()
 
@@ -93,7 +110,7 @@ describe("CompletionOutputRow View Changes", () => {
 	})
 
 	it("stays hidden while the count is still being checked", () => {
-		checkpointLatestChangesCount.mockReturnValue(new Promise(() => {}))
+		checkpointLatestChangedFiles.mockReturnValue(new Promise(() => {}))
 
 		renderWithViewChanges()
 
@@ -101,34 +118,34 @@ describe("CompletionOutputRow View Changes", () => {
 	})
 
 	it("stays hidden when nothing changed since the last message", async () => {
-		checkpointLatestChangesCount.mockResolvedValue({ value: 0 })
+		checkpointLatestChangedFiles.mockResolvedValue(withFiles())
 
 		renderWithViewChanges()
 
-		await waitFor(() => expect(checkpointLatestChangesCount).toHaveBeenCalled())
+		await waitFor(() => expect(checkpointLatestChangedFiles).toHaveBeenCalled())
 		expect(screen.queryByRole("button", { name: /View Changes/ })).toBeNull()
 	})
 
 	it("stays hidden when the count request fails (e.g. no checkpoint to compare against)", async () => {
-		checkpointLatestChangesCount.mockRejectedValue(new Error("boom"))
+		checkpointLatestChangedFiles.mockRejectedValue(new Error("boom"))
 
 		renderWithViewChanges()
 
-		await waitFor(() => expect(checkpointLatestChangesCount).toHaveBeenCalled())
+		await waitFor(() => expect(checkpointLatestChangedFiles).toHaveBeenCalled())
 		expect(screen.queryByRole("button", { name: /View Changes/ })).toBeNull()
 	})
 
 	it("never renders the button when showViewChanges is not set", () => {
-		checkpointLatestChangesCount.mockResolvedValue({ value: 2 })
+		checkpointLatestChangedFiles.mockResolvedValue(withFiles(changed("src/a.ts"), changed("src/b.ts")))
 
 		render(<CompletionOutputRow handleQuoteClick={vi.fn()} quoteButtonState={hiddenQuoteButton} text="All done!" />)
 
-		expect(checkpointLatestChangesCount).not.toHaveBeenCalled()
+		expect(checkpointLatestChangedFiles).not.toHaveBeenCalled()
 		expect(screen.queryByRole("button", { name: /View Changes/ })).toBeNull()
 	})
 
 	it("re-checks instead of reusing a stale positive answer when showViewChanges toggles", async () => {
-		checkpointLatestChangesCount.mockResolvedValue({ value: 2 })
+		checkpointLatestChangedFiles.mockResolvedValue(withFiles(changed("src/a.ts"), changed("src/b.ts")))
 
 		const { rerender } = renderWithViewChanges()
 		await screen.findByRole("button", { name: /View Changes/ })
@@ -138,7 +155,7 @@ describe("CompletionOutputRow View Changes", () => {
 
 		// Second evaluation never resolves: the earlier `true` must not leak
 		// through and flash the button while the host is still checking.
-		checkpointLatestChangesCount.mockReturnValue(new Promise(() => {}))
+		checkpointLatestChangedFiles.mockReturnValue(new Promise(() => {}))
 		rerender(
 			<CompletionOutputRow
 				handleQuoteClick={vi.fn()}
@@ -147,8 +164,85 @@ describe("CompletionOutputRow View Changes", () => {
 				text="All done!"
 			/>,
 		)
-		expect(checkpointLatestChangesCount).toHaveBeenCalledTimes(2)
+		expect(checkpointLatestChangedFiles).toHaveBeenCalledTimes(2)
 		expect(screen.queryByRole("button", { name: /View Changes/ })).toBeNull()
+	})
+})
+
+describe("CompletionOutputRow changed files", () => {
+	beforeEach(() => {
+		checkpointLatestChangedFiles.mockReset()
+		checkpointViewFileChanges.mockClear()
+		checkpointRevertFile.mockClear()
+		openFileLocation.mockClear()
+	})
+
+	const renderRow = () =>
+		render(
+			<CompletionOutputRow
+				handleQuoteClick={vi.fn()}
+				quoteButtonState={hiddenQuoteButton}
+				showViewChanges
+				text="All done!"
+			/>,
+		)
+
+	it("lists each changed file with its status and line counts", async () => {
+		checkpointLatestChangedFiles.mockResolvedValue(
+			withFiles(
+				changed("src/a.ts", ChangedFileStatus.CHANGED_FILE_MODIFIED, 4, 2),
+				changed("src/new.ts", ChangedFileStatus.CHANGED_FILE_ADDED, 10, 0),
+			),
+		)
+
+		renderRow()
+
+		const list = await screen.findByRole("list", { name: "Changed files" })
+		const rows = within(list).getAllByRole("listitem")
+		expect(rows).toHaveLength(2)
+		expect(rows[0]).toHaveTextContent("M")
+		expect(rows[0]).toHaveTextContent("src/a.ts")
+		expect(rows[0]).toHaveTextContent("+4")
+		expect(rows[0]).toHaveTextContent("−2")
+		expect(rows[1]).toHaveTextContent("A")
+		expect(screen.getByText("2 files changed")).toBeInTheDocument()
+	})
+
+	it("opens the file and its diff from the row", async () => {
+		checkpointLatestChangedFiles.mockResolvedValue(withFiles(changed("src/a.ts")))
+
+		renderRow()
+
+		fireEvent.click(await screen.findByRole("button", { name: "View changes to src/a.ts" }))
+		expect(checkpointViewFileChanges).toHaveBeenCalledWith(expect.objectContaining({ value: "/repo/src/a.ts" }))
+
+		fireEvent.click(screen.getByTitle("Open src/a.ts"))
+		expect(openFileLocation).toHaveBeenCalledWith(expect.objectContaining({ path: "/repo/src/a.ts" }))
+	})
+
+	it("does not offer to open a deleted file", async () => {
+		checkpointLatestChangedFiles.mockResolvedValue(withFiles(changed("old.ts", ChangedFileStatus.CHANGED_FILE_DELETED, 0, 5)))
+
+		renderRow()
+
+		expect(await screen.findByTitle("old.ts (deleted)")).toBeDisabled()
+	})
+
+	it("reverts only after a second click, then reloads the list", async () => {
+		checkpointLatestChangedFiles.mockResolvedValueOnce(withFiles(changed("src/a.ts"), changed("src/b.ts")))
+		checkpointLatestChangedFiles.mockResolvedValueOnce(withFiles(changed("src/b.ts")))
+
+		renderRow()
+
+		fireEvent.click(await screen.findByRole("button", { name: "Revert src/a.ts" }))
+		expect(checkpointRevertFile).not.toHaveBeenCalled()
+
+		fireEvent.click(screen.getByRole("button", { name: "Confirm revert of src/a.ts" }))
+		expect(checkpointRevertFile).toHaveBeenCalledWith(expect.objectContaining({ value: "/repo/src/a.ts" }))
+
+		await waitFor(() => expect(screen.getByText("1 file changed")).toBeInTheDocument())
+		expect(checkpointLatestChangedFiles).toHaveBeenCalledTimes(2)
+		expect(screen.queryByText("src/a.ts")).toBeNull()
 	})
 })
 

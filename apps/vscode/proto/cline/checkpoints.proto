@@ -22,6 +22,33 @@ service CheckpointsService {
   // message with the given ts. Asked when the user opens a message for
   // editing, so the answer reflects the checkpoints that exist right then.
   rpc checkpointExistsForMessage(Int64Request) returns (Boolean);
+  // Lists the files changed between the latest checkpoint and the current
+  // working tree, with their status and added/removed line counts.
+  rpc checkpointLatestChangedFiles(EmptyRequest) returns (ChangedFiles);
+  // Opens the diff of one changed file. The request value is its absolute
+  // path, as returned by checkpointLatestChangedFiles.
+  rpc checkpointViewFileChanges(StringRequest) returns (Empty);
+  // Restores one changed file to its content at the latest checkpoint, or
+  // deletes it if the agent created it. The request value is its absolute path.
+  rpc checkpointRevertFile(StringRequest) returns (Empty);
+}
+
+enum ChangedFileStatus {
+  CHANGED_FILE_MODIFIED = 0;
+  CHANGED_FILE_ADDED = 1;
+  CHANGED_FILE_DELETED = 2;
+}
+
+message ChangedFile {
+  string path = 1; // Absolute path
+  string relative_path = 2; // Relative to the task's working directory
+  ChangedFileStatus status = 3;
+  int32 added_lines = 4;
+  int32 removed_lines = 5;
+}
+
+message ChangedFiles {
+  repeated ChangedFile files = 1;
 }
 
 message CheckpointRestoreRequest {

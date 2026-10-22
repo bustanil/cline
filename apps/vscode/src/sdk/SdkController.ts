@@ -7,7 +7,6 @@
 import * as fs from "node:fs/promises"
 import * as path from "node:path"
 import {
-	type CompareCheckpointResult,
 	createRestoredCheckpointMetadata,
 	createUserInstructionConfigService,
 	ensureChatWorkspace,
@@ -30,6 +29,7 @@ import { CLOUD_CREATION_UNCONFIRMED_ERROR_CODE, CLOUD_SESSION_MODE, isCloudSessi
 import { mentionRegexGlobal } from "@shared/context-mentions"
 import type { ClineApiReqInfo, ClineMessage, ExtensionState } from "@shared/ExtensionMessage"
 import type { HistoryItem } from "@shared/HistoryItem"
+import type { ChangedFile } from "@shared/proto/cline/checkpoints"
 import { DeleteAllTaskHistoryCount, type GetTaskHistoryRequest, TaskHistoryArray, TaskResponse } from "@shared/proto/cline/task"
 import type { Settings } from "@shared/storage/state-keys"
 import type { Mode } from "@shared/storage/types"
@@ -60,6 +60,12 @@ import { arePathsEqual, getDesktopDir } from "@/utils/path"
 import { ClineAccountService } from "./account-service"
 import { AuthService, LogoutReason } from "./auth-service"
 import { BUILTIN_SLASH_COMMANDS } from "./builtin-slash-commands"
+import {
+	type CheckpointComparison,
+	findFileDiff,
+	revertFileToCheckpoint,
+	summarizeChangedFiles,
+} from "./checkpoint-changed-files"
 import { buildStartSessionInput, createHistoryItemFromSession } from "./cline-session-factory"
 import { MessageTranslatorState, reshapeErrorForWebview } from "./message-translator"
 import { createProviderCatalog } from "./model-catalog/catalog"
@@ -2037,7 +2043,7 @@ export class Controller {
 	 * no checkpoint exists (e.g. the workspace is not a git repository).
 	 * Throws when there is no task at all.
 	 */
-	private async computeLatestCheckpointChanges(): Promise<CompareCheckpointResult["diffs"] | undefined> {
+	private async computeLatestCheckpointChanges(): Promise<CheckpointComparison | undefined> {
 		const activeSession = this.sessions.getActiveSession()
 		const sessionId = activeSession?.sessionId ?? this.task?.taskId
 		if (!sessionId) {
@@ -2062,12 +2068,12 @@ export class Controller {
 			}
 
 			const cwd = sessionRecord?.cwd?.trim() || sessionRecord?.workspaceRoot?.trim() || (await this.getWorkspaceRoot())
-			const { diffs } = await sessionHost.compareCheckpoint({
+			const comparison = await sessionHost.compareCheckpoint({
 				sessionId,
 				checkpointRunCount: latestCheckpoint.runCount,
 				cwd,
 			})
-			return diffs
+			return { cwd: comparison.cwd, checkpointRef: comparison.checkpoint.ref, diffs: comparison.diffs }
 		} finally {
 			await tempHost?.dispose("viewLatestCheckpointChanges")
 		}
@@ -2132,7 +2138,7 @@ export class Controller {
 	 */
 	async getLatestCheckpointChangesCount(): Promise<number> {
 		try {
-			return (await this.computeLatestCheckpointChanges())?.length ?? 0
+			return (await this.computeLatestCheckpointChanges())?.diffs.length ?? 0
 		} catch (error) {
 			Logger.debug(`[SdkController] Failed to count latest checkpoint changes: ${error}`)
 			return 0
@@ -2145,7 +2151,7 @@ export class Controller {
 	 * the user's last message started this run — and the current working tree.
 	 */
 	async viewLatestCheckpointChanges(): Promise<void> {
-		const diffs = await this.computeLatestCheckpointChanges()
+		const diffs = (await this.computeLatestCheckpointChanges())?.diffs
 		if (diffs === undefined) {
 			HostProvider.window.showMessage({
 				type: ShowMessageType.INFORMATION,
@@ -2169,6 +2175,62 @@ export class Controller {
 				rightContent: diff.rightContent,
 			})),
 		})
+	}
+
+	/**
+	 * The changed-files list on the completion row: each file changed since the
+	 * latest checkpoint, with its status and line counts. Empty when nothing can
+	 * be compared.
+	 */
+	async getLatestChangedFiles(): Promise<ChangedFile[]> {
+		try {
+			const comparison = await this.computeLatestCheckpointChanges()
+			return comparison ? await summarizeChangedFiles(comparison) : []
+		} catch (error) {
+			Logger.debug(`[SdkController] Failed to list latest changed files: ${error}`)
+			return []
+		}
+	}
+
+	/** Opens the diff of one file changed since the latest checkpoint. */
+	async viewLatestFileChanges(filePath: string): Promise<void> {
+		const comparison = await this.computeLatestCheckpointChanges()
+		const diff = comparison && findFileDiff(comparison, filePath)
+		if (!diff) {
+			HostProvider.window.showMessage({
+				type: ShowMessageType.INFORMATION,
+				message: `No changes found for ${path.basename(filePath)} since your last message.`,
+			})
+			return
+		}
+		await HostProvider.diff.openMultiFileDiff({
+			title: `Changes to ${path.basename(filePath)}`,
+			diffs: [{ filePath: diff.filePath, leftContent: diff.leftContent, rightContent: diff.rightContent }],
+		})
+	}
+
+	/**
+	 * Reverts one file to the latest checkpoint: restores its earlier content, or
+	 * deletes it if the agent created it. Other files are left as they are.
+	 */
+	async revertLatestFileChange(filePath: string): Promise<void> {
+		const comparison = await this.computeLatestCheckpointChanges()
+		const diff = comparison && findFileDiff(comparison, filePath)
+		if (!comparison || !diff) {
+			HostProvider.window.showMessage({
+				type: ShowMessageType.INFORMATION,
+				message: `No changes to revert for ${path.basename(filePath)}.`,
+			})
+			return
+		}
+		try {
+			await revertFileToCheckpoint(comparison, diff)
+		} catch (error) {
+			HostProvider.window.showMessage({
+				type: ShowMessageType.ERROR,
+				message: `Could not revert ${path.basename(filePath)}: ${error instanceof Error ? error.message : String(error)}`,
+			})
+		}
 	}
 
 	/**
