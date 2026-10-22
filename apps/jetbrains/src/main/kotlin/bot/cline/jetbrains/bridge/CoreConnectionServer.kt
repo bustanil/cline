@@ -35,6 +35,7 @@ class CoreConnectionServer(
         server = NettyServerBuilder.forAddress(InetSocketAddress("127.0.0.1", port))
             .addService(health.healthService)
             .addService(service)
+            .addService(ServerInterceptors.intercept(EnvService().definition(), TokenInterceptor(token)))
             .build()
             .start()
         return this

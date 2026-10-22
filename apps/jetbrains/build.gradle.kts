@@ -31,6 +31,8 @@ sourceSets {
             // The protos live in the VS Code app; the plugin reads them in place.
             srcDir("../vscode/proto")
             include("host/core_connection.proto")
+            include("host/env.proto")
+            include("cline/common.proto")
         }
     }
 }
