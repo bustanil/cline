@@ -40,9 +40,21 @@ class ChatStore(private val core: CoreApi) {
         listeners += listener
     }
 
+    /** Hands the selected code to the agent: adds it to the input, or starts a fix, explain or improve task. */
+    fun runEditorCommand(command: EditorCommand, context: EditorContext): CompletableFuture<String> =
+        core.call("cline.CommandsService", command.method, EditorCommands.contextJson(context))
+
+    private val addToInputListeners = CopyOnWriteArrayList<(String) -> Unit>()
+
+    /** Text the core wants placed in the input box, such as code added from the editor. */
+    fun addAddToInputListener(listener: (String) -> Unit) {
+        addToInputListeners += listener
+    }
+
     /** Loads the current state, then follows state pushes and partial messages. */
     fun start(): CompletableFuture<Unit> {
         synchronized(this) {
+            subscriptions += core.subscribe("cline.UiService", "subscribeToAddToInput", onMessage = ::onAddToInputPayload)
             subscriptions += core.subscribe("cline.StateService", "subscribeToState", onMessage = ::onStatePayload)
             subscriptions += core.subscribe("cline.UiService", "subscribeToPartialMessage", onMessage = ::onPartialPayload)
         }
@@ -164,6 +176,12 @@ class ChatStore(private val core: CoreApi) {
                 turn,
             )
         }
+    }
+
+    private fun onAddToInputPayload(payload: String) {
+        // The payload is a `String` message: {"value":"..."}
+        val text = runCatching { JsonParser.parseString(payload).asJsonObject.get("value")?.asString }.getOrNull().orEmpty()
+        if (text.isNotEmpty()) addToInputListeners.forEach { it(text) }
     }
 
     private fun onPartialPayload(payload: String) {

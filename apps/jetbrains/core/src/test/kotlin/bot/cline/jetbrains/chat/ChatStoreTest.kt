@@ -87,12 +87,12 @@ class ChatStoreTest {
     }
 
     @Test
-    fun `stop cancels both subscriptions`() {
+    fun `stop cancels every subscription`() {
         val core = FakeCore()
         val store = ChatStore(core)
         store.start().get()
         store.stop()
-        assertEquals(2, core.cancelled.size)
+        assertEquals(3, core.cancelled.size)
     }
 }
 

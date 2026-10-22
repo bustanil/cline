@@ -10,5 +10,26 @@
         <applicationConfigurable parentId="tools" instance="bot.cline.jetbrains.ide.ClineSettingsConfigurable"
                                  id="bot.cline.jetbrains.settings" displayName="Cline"/>
         <notificationGroup id="Cline" displayType="BALLOON"/>
+        <intentionAction>
+            <language/>
+            <className>bot.cline.jetbrains.ide.FixWithClineIntention</className>
+            <category>Cline</category>
+        </intentionAction>
     </extensions>
+
+    <actions>
+        <group id="Cline.EditorActions" text="Cline" popup="true" icon="AllIcons.Actions.Lightning">
+            <action id="Cline.AddToChat" class="bot.cline.jetbrains.ide.AddToClineAction" text="Add to Cline"
+                    description="Add the selected code to the Cline chat">
+                <keyboard-shortcut keymap="$default" first-keystroke="ctrl alt K"/>
+            </action>
+            <action id="Cline.Fix" class="bot.cline.jetbrains.ide.FixWithClineAction" text="Fix with Cline"
+                    description="Ask Cline to fix the selected code or the problem at the caret"/>
+            <action id="Cline.Explain" class="bot.cline.jetbrains.ide.ExplainWithClineAction" text="Explain with Cline"
+                    description="Ask Cline to explain the selected code"/>
+            <action id="Cline.Improve" class="bot.cline.jetbrains.ide.ImproveWithClineAction" text="Improve with Cline"
+                    description="Ask Cline to improve the selected code"/>
+            <add-to-group group-id="EditorPopupMenu" anchor="first"/>
+        </group>
+    </actions>
 </idea-plugin>

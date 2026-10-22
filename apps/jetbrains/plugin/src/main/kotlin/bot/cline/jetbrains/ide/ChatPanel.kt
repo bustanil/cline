@@ -59,6 +59,13 @@ class ChatPanel(private val project: Project) : JPanel(BorderLayout()), Disposab
     }
     private val sendButton = JButton("Send").apply { addActionListener { send() } }
     private val listener: () -> Unit = { ApplicationManager.getApplication().invokeLater(::refresh, ModalityState.any()) }
+    private val inputListener: (String) -> Unit = { text ->
+        ApplicationManager.getApplication().invokeLater({
+            input.text = if (input.text.isBlank()) text else input.text.trimEnd() + "\n\n" + text
+            input.caretPosition = input.text.length
+            input.requestFocusInWindow()
+        }, ModalityState.any())
+    }
 
     // The two footer slots; the store decides what each does.
     private object Slot { const val PRIMARY = 1; const val SECONDARY = 2 }
@@ -79,6 +86,7 @@ class ChatPanel(private val project: Project) : JPanel(BorderLayout()), Disposab
         add(scroll, BorderLayout.CENTER)
         add(footer, BorderLayout.SOUTH)
         service.addListener(listener)
+        service.addInputListener(inputListener)
         service.start()
         refresh()
     }
@@ -178,5 +186,6 @@ class ChatPanel(private val project: Project) : JPanel(BorderLayout()), Disposab
 
     override fun dispose() {
         service.removeListener(listener)
+        service.removeInputListener(inputListener)
     }
 }

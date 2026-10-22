@@ -33,6 +33,44 @@ class ClineProjectService(private val project: Project) : Disposable {
     var store: ChatStore? = null
         private set
 
+    private val inputListeners = CopyOnWriteArrayList<(String) -> Unit>()
+    private val pendingInput = StringBuilder()
+
+    /** Text the core wants in the input box (code added from the editor). It waits here if no chat is open yet. */
+    fun addInputListener(listener: (String) -> Unit) {
+        inputListeners += listener
+        val waiting = synchronized(pendingInput) { pendingInput.toString().also { pendingInput.setLength(0) } }
+        if (waiting.isNotEmpty()) listener(waiting)
+    }
+
+    fun removeInputListener(listener: (String) -> Unit) {
+        inputListeners -= listener
+    }
+
+    private fun deliverInput(text: String) {
+        if (inputListeners.isEmpty()) {
+            synchronized(pendingInput) { if (pendingInput.isNotEmpty()) pendingInput.append("\n\n"); pendingInput.append(text) }
+        } else {
+            inputListeners.forEach { it(text) }
+        }
+    }
+
+    /** Completes with the chat store once the core is connected, or fails after [timeoutSeconds]. */
+    fun awaitStore(timeoutSeconds: Long = 60): java.util.concurrent.CompletableFuture<ChatStore> {
+        start()
+        store?.let { return java.util.concurrent.CompletableFuture.completedFuture(it) }
+        val future = java.util.concurrent.CompletableFuture<ChatStore>()
+        lateinit var waiter: () -> Unit
+        waiter = {
+            store?.let { found ->
+                if (future.complete(found)) removeListener(waiter)
+            }
+        }
+        addListener(waiter)
+        store?.let { waiter() }
+        return future.orTimeout(timeoutSeconds, java.util.concurrent.TimeUnit.SECONDS).whenComplete { _, _ -> removeListener(waiter) }
+    }
+
     fun addListener(listener: () -> Unit) {
         listeners += listener
     }
@@ -63,6 +101,7 @@ class ClineProjectService(private val project: Project) : Disposable {
         created.onConnected { connection ->
             val chat = ChatStore(connection)
             chat.addListener { fire() }
+            chat.addAddToInputListener(::deliverInput)
             store = chat
             status = Status.CONNECTED
             chat.start().whenComplete { _, error -> if (error != null) LOG.warn("Cline: loading state failed", error) }
