@@ -1,0 +1,7 @@
+<idea-plugin>
+    <id>bot.cline.jetbrains</id>
+    <name>Cline</name>
+    <vendor>Cline</vendor>
+    <description>Cline for JetBrains IDEs, with a native chat.</description>
+    <depends>com.intellij.modules.platform</depends>
+</idea-plugin>
