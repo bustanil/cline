@@ -10,6 +10,7 @@ import org.commonmark.ext.gfm.tables.TableRow
 import org.commonmark.node.AbstractVisitor
 import org.commonmark.renderer.html.AttributeProvider
 import org.commonmark.node.Code
+import org.commonmark.node.HtmlInline
 import org.commonmark.node.Node
 import org.commonmark.parser.Parser
 import org.commonmark.renderer.html.DefaultUrlSanitizer
@@ -39,6 +40,12 @@ data class CodeBlockStyle(
 object MarkdownHtml {
     const val FILE_SCHEME = "cline-file:"
 
+    /** A raw `<br>` in a reply, however it is spelled. */
+    private val BREAK = Regex("<br\\s*/?>", RegexOption.IGNORE_CASE)
+
+    /** Stands in for a `<br>` while the reply is rendered, so escaping leaves it alone. */
+    private const val BREAK_MARK = "\uE000"
+
     private val extensions: List<Extension> = listOf(TablesExtension.create(), StrikethroughExtension.create())
     private val parser: Parser = Parser.builder().extensions(extensions).build()
 
@@ -57,6 +64,7 @@ object MarkdownHtml {
     fun render(markdown: String, links: Map<String, FileLink> = emptyMap(), codeStyle: CodeBlockStyle? = null): String {
         val document = parser.parse(markdown)
         if (links.isNotEmpty()) wrapLinkedCode(document, links)
+        lineBreaks(document)
         // Raw HTML in a model's reply is shown as text, not drawn.
         val builder = HtmlRenderer.builder().extensions(extensions).escapeHtml(true)
         if (codeStyle != null) {
@@ -67,7 +75,20 @@ object MarkdownHtml {
             .sanitizeUrls(true)
             .urlSanitizer(DefaultUrlSanitizer(listOf("http", "https", "mailto", FILE_SCHEME.removeSuffix(":"))))
             .build().render(document)
-        return if (codeStyle != null) wrapTables(html, codeStyle) else html
+        return (if (codeStyle != null) wrapTables(html, codeStyle) else html).replace(BREAK_MARK, "<br>")
+    }
+
+    /**
+     * A `<br>` in a reply means a line break, not text: the model writes one to put a second line in a table
+     * cell, which Swing's HTML cannot do any other way. Raw HTML is escaped, so the break is marked here and put
+     * back once the reply is rendered.
+     */
+    private fun lineBreaks(document: Node) {
+        document.accept(object : AbstractVisitor() {
+            override fun visit(htmlInline: HtmlInline) {
+                if (BREAK.matches(htmlInline.literal)) htmlInline.literal = BREAK_MARK
+            }
+        })
     }
 
     // Tables, as in the Claude Code app: a bordered card, a bold left-aligned header, and thin lines between rows only.
@@ -137,6 +158,7 @@ object MarkdownHtml {
     fun blocks(markdown: String, links: Map<String, FileLink> = emptyMap(), style: CodeBlockStyle? = null): List<Block> {
         val document = parser.parse(markdown)
         if (links.isNotEmpty()) wrapLinkedCode(document, links)
+        lineBreaks(document)
         val widths = columnWidths(document)
         val text = baseBuilder().build()
         val tables = baseBuilder().attributeProviderFactory {
@@ -145,7 +167,7 @@ object MarkdownHtml {
         val out = mutableListOf<Block>()
         var pending = org.commonmark.node.Document()
         fun flush() {
-            if (pending.firstChild != null) out += Block(BlockKind.TEXT, text.render(pending))
+            if (pending.firstChild != null) out += Block(BlockKind.TEXT, text.render(pending).replace(BREAK_MARK, "<br>"))
             pending = org.commonmark.node.Document()
         }
         var node = document.firstChild
@@ -157,7 +179,7 @@ object MarkdownHtml {
                 is TableBlock -> {
                     flush()
                     val holder = org.commonmark.node.Document().also { it.appendChild(node) }
-                    out += Block(BlockKind.TABLE, keepCellCodeOnOneLine(tables.render(holder)))
+                    out += Block(BlockKind.TABLE, keepCellCodeOnOneLine(tables.render(holder)).replace(BREAK_MARK, "<br>"))
                 }
                 else -> pending.appendChild(node)
             }

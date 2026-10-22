@@ -92,6 +92,23 @@ class MarkdownHtmlTest {
         val html = MarkdownHtml.render("| a | b |\n|---|---|\n| 1 | 2 |\n\n~~gone~~")
         assertTrue(html.contains("<table>") && html.contains("<del>gone</del>"), html)
     }
+
+    @Test
+    fun `a br is a line break, even in a table cell`() {
+        val md = "| Pillar | Meaning |\n|---|---|\n| Shahādah <br> الشهادة | Testimony |"
+        val html = MarkdownHtml.blocks(md).first { it.kind == MarkdownHtml.BlockKind.TABLE }.html
+        assertTrue(html.contains("<br>"), html)
+        assertFalse(html.contains("&lt;br&gt;"), html)
+        val three = MarkdownHtml.render("a<br/>b<BR />c")
+        assertEquals(2, Regex("<br>").findAll(three).count(), three)
+    }
+
+    @Test
+    fun `a br in code stays code`() {
+        val html = MarkdownHtml.render("`<br>`\n\n```\n<br>\n```")
+        assertFalse(html.contains("<br>"), html)
+        assertTrue(html.contains("&lt;br&gt;"), html)
+    }
 }
 
 class CodeBlockTest {

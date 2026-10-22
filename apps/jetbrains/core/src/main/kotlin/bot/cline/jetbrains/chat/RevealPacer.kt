@@ -97,13 +97,13 @@ class RevealPacer(private val baseStep: Int = 2) {
     private fun stepsFor(length: Int): Int = (length / CHARS_PER_STEP).coerceIn(MIN_STEPS, MAX_STEPS)
 
     private companion object {
-        /** Characters revealed per step when the answer is short enough for the pace to follow it: about 50 a second. */
-        const val CHARS_PER_STEP = 3
+        /** Characters revealed per step when the answer is short enough for the pace to follow it: about 100 a second. */
+        const val CHARS_PER_STEP = 6
 
-        /** At 60 ms a step, a second and a half, so even a one-line answer is seen to arrive. */
-        const val MIN_STEPS = 25
+        /** At 60 ms a step, a little under a second, so even a one-line answer is seen to arrive. */
+        const val MIN_STEPS = 13
 
-        /** At 60 ms a step, under six seconds, so a long answer does not drag. */
-        const val MAX_STEPS = 90
+        /** At 60 ms a step, under three seconds, so a long answer does not drag. */
+        const val MAX_STEPS = 45
     }
 }

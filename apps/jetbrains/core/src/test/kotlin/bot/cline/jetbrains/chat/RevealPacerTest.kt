@@ -77,7 +77,7 @@ class RevealPacerTest {
     }
 
     @Test
-    fun `a short answer still takes about a second and a half`() {
+    fun `a short answer still takes about a second`() {
         val pacer = RevealPacer()
         val base = items(say(1, "task", "go"))
         pacer.apply(base)
@@ -90,8 +90,8 @@ class RevealPacerTest {
             pacer.apply(all)
             steps++
         }
-        // The chat ticks every 60 ms, so 20 steps is over a second.
-        assertTrue(steps >= 20, "took only $steps steps")
+        // The chat ticks every 60 ms, so 10 steps is over half a second.
+        assertTrue(steps >= 10, "took only $steps steps")
         assertEquals(short, texts(pacer.apply(all)).last())
     }
 
