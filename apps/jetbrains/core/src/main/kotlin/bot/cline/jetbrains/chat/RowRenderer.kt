@@ -40,7 +40,7 @@ object RowRenderer {
         return when {
             m.isSay("task") -> markdown("Task", m)
             m.isSay("user_feedback") -> markdown("You", m)
-            m.isSay("text") -> markdown(null, m)
+            m.isSay("text") || m.isSay("plan_completion_result") -> markdown(null, m)
             m.isSay("reasoning") -> markdown(null, m).copy(collapsedTitle = "Thinking")
             m.isSay("completion_result") || m.isAsk("completion_result") -> markdown("✓ Task completed", m)
             m.isSay("tool") || m.isAsk("tool") -> tool(m, c)
@@ -104,7 +104,7 @@ object RowRenderer {
         info.summary(past, SUBJECT).split(SUBJECT).joinToString(subjectHtml) { escape(it) }
 
     private fun pathHtml(path: String?, reference: String?, links: Map<String, FileLink>): String {
-        val shown = path ?: return "<i>(no path)</i>"
+        val shown = path ?: return "<i>the project</i>"
         val label = "<code>${escape(shown)}</code>"
         return if (reference != null && reference in links) """<a href="${MarkdownHtml.hrefFor(reference)}">$label</a>""" else label
     }

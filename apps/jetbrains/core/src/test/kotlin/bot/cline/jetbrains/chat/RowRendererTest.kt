@@ -100,6 +100,15 @@ class RowRendererTest {
     }
 
     @Test
+    fun `a plan reply is markdown and a search with no folder says the project`() {
+        val plan = render(say(1, "plan_completion_result", "Ready for your **fake-acquirer** project")).second
+        assertTrue(plan.contains("<strong>fake-acquirer</strong>") && !plan.contains("plan_completion_result"), plan)
+        val search = render(tool(2, "searchFiles", "", "").let { ChatMessage(it.raw.deepCopy().also { o -> o.addProperty("text", """{"tool":"searchFiles","regex":"AuthCapture"}""") }) }).second
+        assertTrue(search.contains("Cline searched <i>the project</i> for AuthCapture"), search)
+        assertFalse(search.contains("no path"), search)
+    }
+
+    @Test
     fun `a tool group lists one line per call`() {
         val group = TranscriptItem.ToolGroup(listOf(tool(1, "readFile", "a.kt"), tool(2, "searchFiles", "src", ""","regex":"TODO"""")))
         val html = RowRenderer.render(group).html(emptyMap())
