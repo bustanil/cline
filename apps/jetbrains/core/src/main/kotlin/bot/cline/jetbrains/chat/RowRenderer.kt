@@ -58,6 +58,7 @@ object RowRenderer {
             m.isSay("reasoning") -> markdown(null, m, c, highlighter).copy(collapsedTitle = "Thinking")
             m.isSay("completion_result") || m.isAsk("completion_result") -> markdown("✓ Task completed", m, c, highlighter)
             m.isSay("tool") || m.isAsk("tool") -> tool(m, c)
+            m.isUseMcp() -> McpInfo.parse(m).let { info -> RowView(emptyList(), { mcpHtml(info, c, asking = m.isAsk("use_mcp_server")) }) }
             m.isCommand() -> command(m, c)
             m.isAsk("followup") || m.isAsk("plan_mode_respond") -> question(m, c, highlighter)
             m.isSay("error") -> error(m.text(), c)
@@ -160,6 +161,21 @@ object RowRenderer {
             } ?: ""
             "<p><b>${if (m.isAsk("command")) "Cline wants to run" else "Cline ran"}</b></p><pre>${escape(info.command)}</pre>$output"
         })
+    }
+
+    /** An MCP call: which server and tool, the arguments, and the answer once there is one. */
+    internal fun mcpHtml(info: McpInfo, c: RowColors, asking: Boolean): String {
+        val what = if (info.tool != null) "tool <b>${escape(info.tool)}</b>" else "resource <b>${escape(info.uri ?: "")}</b>"
+        val head = "<p><b>${if (asking) "Cline wants to use" else "Cline used"}</b> $what on <b>${escape(info.server)}</b></p>"
+        val args = info.arguments?.takeIf { it.isNotBlank() }?.let { "<p>${colored(c.muted, "Arguments")}</p><pre>${escape(clip(prettyText(it)))}</pre>" }.orEmpty()
+        val response = info.response?.takeIf { it.isNotBlank() }?.let { "<p>${colored(c.muted, "Response")}</p><pre>${escape(clip(prettyText(it)))}</pre>" }.orEmpty()
+        return head + args + response
+    }
+
+    /** Keeps the first lines of a long text; a server's answer can be thousands of lines. */
+    private fun clip(text: String): String {
+        val lines = text.lines()
+        return if (lines.size <= MAX_OUTPUT_LINES) text else lines.take(MAX_OUTPUT_LINES).joinToString("\n") + "\n… ${lines.size - MAX_OUTPUT_LINES} more lines"
     }
 
     private fun fallback(m: ChatMessage, type: String?, c: RowColors): RowView {

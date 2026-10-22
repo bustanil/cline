@@ -244,3 +244,39 @@ class HoldUnfinishedTest {
         assertEquals(2, Transcript.holdUnfinished(rows(say(1, "task"), say(2, "tool", partial = true)), "streaming").size)
     }
 }
+
+class McpRowsTest {
+    private fun msg(ts: Long, type: String, kind: String, text: String) = ChatMessage(
+        JsonObject().apply {
+            addProperty("ts", ts)
+            addProperty("type", type)
+            addProperty(type, kind)
+            addProperty("text", text)
+        },
+    )
+
+    private val call = """{"type":"use_mcp_tool","serverName":"jetbrains-idea","toolName":"list_directory_tree","arguments":"{\"directoryPath\":\".\"}"}"""
+
+    @Test
+    fun `an MCP call and its answer become one activity step`() {
+        val items = Transcript.build(
+            listOf(msg(1, "say", "use_mcp_server", call), msg(2, "say", "mcp_server_response", "{\"tree\":\"a\"}")),
+            "idle",
+        )
+        val activity = items.single() as TranscriptItem.Activity
+        assertEquals(1, activity.messages.size)
+        val view = ActivityRenderer.render(activity)
+        val step = view.steps.single()
+        assertEquals("Used", step.verb)
+        assertTrue(step.target.startsWith("list_directory_tree"), step.target)
+        val html = step.detailHtml(emptyMap())
+        assertTrue(html.contains("jetbrains-idea") && html.contains("directoryPath") && html.contains("tree"), html)
+    }
+
+    @Test
+    fun `an MCP call waiting for approval is its own row with the server and tool`() {
+        val items = Transcript.build(listOf(msg(1, "ask", "use_mcp_server", call)), "awaiting_approval")
+        val row = RowRenderer.render(items.single()).html(emptyMap())
+        assertTrue(row.contains("wants to use") && row.contains("list_directory_tree"), row)
+    }
+}

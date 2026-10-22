@@ -36,7 +36,7 @@ object Transcript {
      * an approval still waiting (`awaiting_approval`) is kept as its own row so it stays in view.
      */
     fun build(messages: List<ChatMessage>, turnPhase: String? = null): List<TranscriptItem> =
-        group(visible(combineCommandSequences(combineApiRequests(messages))), turnPhase)
+        group(visible(combineMcpResponses(combineCommandSequences(combineApiRequests(messages)))), turnPhase)
 
     /**
      * Leaves out the answer text that is still being written, so it appears once, whole: when it is finished,
@@ -100,6 +100,28 @@ object Transcript {
         return messages.filterNot { it.isCommandOutput() }.map { if (it.isCommand()) combined[it.ts] ?: it else it }
     }
 
+    /** Folds each `mcp_server_response` into the MCP call before it, so the two draw as one step. */
+    fun combineMcpResponses(messages: List<ChatMessage>): List<ChatMessage> {
+        val answers = HashMap<Long, String>()
+        var call: ChatMessage? = null
+        for (m in messages) {
+            when {
+                m.isUseMcp() -> call = m
+                m.isSay("mcp_server_response") -> call?.let { answers[it.ts] = answers[it.ts]?.let { old -> old + "\n" + m.text() } ?: m.text() }
+            }
+        }
+        if (answers.isEmpty()) return messages
+        val answered = messages.filter { it.isUseMcp() && answers.containsKey(it.ts) }.map { it.ts }.toSet()
+        var current: Long? = null
+        val out = ArrayList<ChatMessage>()
+        for (m in messages) {
+            if (m.isUseMcp()) current = m.ts
+            if (m.isSay("mcp_server_response") && current in answered) continue
+            out += if (m.isUseMcp() && m.ts in answered) ChatMessage(m.raw.deepCopy().also { it.addProperty(McpInfo.RESPONSE, answers.getValue(m.ts)) }) else m
+        }
+        return out
+    }
+
     /** Leaves out the rows the user should not see. */
     fun visible(messages: List<ChatMessage>): List<ChatMessage> = messages.filterIndexed { index, m ->
         if (isEchoOfAskOption(m, messages.getOrNull(index - 1))) return@filterIndexed false
@@ -144,7 +166,7 @@ object Transcript {
     }
 
     /** A command or a tool call, whether it is a question or a report. */
-    fun isActivity(m: ChatMessage): Boolean = m.isCommand() || m.isSay("tool") || m.isAsk("tool")
+    fun isActivity(m: ChatMessage): Boolean = m.isCommand() || m.isSay("tool") || m.isAsk("tool") || m.isUseMcp()
 
     // The user's answer to a followup that is just one of its offered options is shown by the question itself.
     private fun isEchoOfAskOption(m: ChatMessage, previous: ChatMessage?): Boolean {
@@ -174,3 +196,5 @@ internal fun ChatMessage.isCommand() = ask() == "command" || say() == "command"
 internal fun ChatMessage.isCommandOutput() = ask() == "command_output" || say() == "command_output"
 
 internal fun ChatMessage.withText(text: String) = ChatMessage(raw.deepCopy().also { it.addProperty("text", text) })
+
+internal fun ChatMessage.isUseMcp() = isSay("use_mcp_server") || isAsk("use_mcp_server")

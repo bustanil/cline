@@ -51,6 +51,12 @@ object ActivityRenderer {
             val verb = if (running) "Running" else "Ran"
             return ActivityStep(m.ts, running, verb, target, "$verb a command", true, emptyList()) { commandHtml(info, colors) }
         }
+        if (m.isUseMcp()) {
+            val info = McpInfo.parse(m)
+            val verb = if (running) "Using" else "Used"
+            val target = info.subject + if (info.server.isNotEmpty()) " · ${info.server}" else ""
+            return ActivityStep(m.ts, running, verb, target, "$verb ${info.subject}", false, emptyList()) { RowRenderer.mcpHtml(info, colors, asking = false) }
+        }
         val info = ToolInfo.parse(m)
         val (now, done) = verbs(info?.tool)
         val verb = if (running) now else done

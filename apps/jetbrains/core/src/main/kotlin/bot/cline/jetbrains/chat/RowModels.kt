@@ -89,6 +89,28 @@ data class CommandInfo(val command: String, val output: String?) {
     }
 }
 
+/** An MCP tool call or resource read (`ClineAskUseMcpServer`), with the server's answer when it has come. */
+data class McpInfo(val server: String, val tool: String?, val uri: String?, val arguments: String?, val response: String?) {
+    /** What the call is about: the tool name, or the resource it reads. */
+    val subject: String get() = tool ?: uri ?: "a resource"
+
+    companion object {
+        /** The property [Transcript.combineMcpResponses] adds to a call to hold the answer. */
+        const val RESPONSE = "mcpResponse"
+
+        fun parse(message: ChatMessage): McpInfo {
+            val o = parse(message.text()) ?: JsonObject()
+            return McpInfo(
+                server = o.str("serverName").orEmpty(),
+                tool = o.str("toolName"),
+                uri = o.str("uri"),
+                arguments = o.get("arguments")?.takeIf { it.isJsonPrimitive }?.asString,
+                response = message.raw.str(RESPONSE),
+            )
+        }
+    }
+}
+
 /** The JSON of an `api_req_started` message (`ClineApiReqInfo`). */
 data class ApiReqInfo(
     val tokensIn: Int,
