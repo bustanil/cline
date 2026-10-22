@@ -29,16 +29,34 @@ class ButtonConfigTest {
         fun cfg(ask: String) = ButtonConfigs.forMessage(m("""{"ts":1,"type":"ask","ask":"$ask"}"""))
         assertEquals("Run Command" to ButtonAction.APPROVE, cfg("command").let { it.primaryText to it.primaryAction })
         assertEquals("Resume Task" to ButtonAction.PROCEED, cfg("resume_task").let { it.primaryText to it.primaryAction })
-        assertEquals("Start New Task" to ButtonAction.NEW_TASK, cfg("completion_result").let { it.primaryText to it.primaryAction })
+        // No Start New Task button: the + in the title bar starts a new chat.
+        assertEquals(false, cfg("completion_result").enableButtons)
+        assertEquals(null, cfg("completion_result").primaryText)
+        assertEquals(false, cfg("resume_completed_task").enableButtons)
+        assertEquals("Start New Task with Context" to ButtonAction.NEW_TASK, cfg("new_task").let { it.primaryText to it.primaryAction })
         assertEquals(false, cfg("followup").enableButtons)
         assertEquals("Proceed Anyways", cfg("mistake_limit_reached").primaryText)
         assertEquals(ButtonConfigs.toolApprove, cfg("some_future_ask"))
     }
 
     @Test
-    fun `an unconfirmed cloud creation error offers only a new task`() {
+    fun `an unconfirmed cloud creation error offers no button because the plus starts a new chat`() {
         val msg = m("""{"ts":1,"type":"ask","ask":"api_req_failed","text":"{\"code\":\"cloud_creation_unconfirmed\"}"}""")
         assertEquals(ButtonConfigs.cloudCreationUnconfirmed, ButtonConfigs.forMessage(msg))
+        assertEquals(false, ButtonConfigs.cloudCreationUnconfirmed.enableButtons)
+    }
+
+    @Test
+    fun `only the new task with context ask offers a new task button`() {
+        val all = listOf(
+            ButtonConfigs.apiReqFailed, ButtonConfigs.cloudCreationUnconfirmed, ButtonConfigs.mistakeLimitReached, ButtonConfigs.toolApprove,
+            ButtonConfigs.toolSave, ButtonConfigs.command, ButtonConfigs.commandOutput, ButtonConfigs.completionResult, ButtonConfigs.resumeTask,
+            ButtonConfigs.resumeCompletedTask, ButtonConfigs.condense, ButtonConfigs.reportBug, ButtonConfigs.partial, ButtonConfigs.default,
+        )
+        assertEquals(emptyList(), all.filter { ButtonAction.NEW_TASK in listOf(it.primaryAction, it.secondaryAction) })
+        assertEquals(ButtonAction.NEW_TASK, ButtonConfigs.newTask.primaryAction)
+        assertEquals("Retry" to null, ButtonConfigs.apiReqFailed.primaryText to ButtonConfigs.apiReqFailed.secondaryText)
+        assertEquals("Proceed Anyways" to null, ButtonConfigs.mistakeLimitReached.primaryText to ButtonConfigs.mistakeLimitReached.secondaryText)
     }
 
     @Test

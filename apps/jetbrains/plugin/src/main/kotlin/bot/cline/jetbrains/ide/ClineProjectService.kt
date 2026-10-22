@@ -60,6 +60,27 @@ class ClineProjectService(private val project: Project) : Disposable {
         }
     }
 
+    private val newChatListeners = CopyOnWriteArrayList<() -> Unit>()
+
+    /** Runs when a new chat is started from outside the chat panel, such as the + in the title bar. */
+    fun addNewChatListener(listener: () -> Unit) {
+        newChatListeners += listener
+    }
+
+    fun removeNewChatListener(listener: () -> Unit) {
+        newChatListeners -= listener
+    }
+
+    /**
+     * Starts a new chat: the core drops the task, and every chat panel empties its composer, so a draft, an
+     * attachment or a quote from the old chat does not follow into the new one.
+     */
+    fun newChat(): java.util.concurrent.CompletableFuture<String>? {
+        val started = store?.clearTask()
+        newChatListeners.forEach { it() }
+        return started
+    }
+
     /** Completes with the chat store once the core is connected, or fails after [timeoutSeconds]. */
     fun awaitStore(timeoutSeconds: Long = 60): java.util.concurrent.CompletableFuture<ChatStore> {
         start()

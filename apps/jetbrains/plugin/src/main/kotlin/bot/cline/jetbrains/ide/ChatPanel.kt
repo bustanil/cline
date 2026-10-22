@@ -70,6 +70,7 @@ class ChatPanel(private val project: Project) : JPanel(BorderLayout()), Disposab
         run = { refresh() },
     )
     private val listener: () -> Unit = { redraw.request() }
+    private val newChatListener: () -> Unit = { composer.reset() }
     private val inputListener: (String) -> Unit = { text ->
         ApplicationManager.getApplication().invokeLater({
             input.text = if (input.text.isBlank()) text else input.text.trimEnd() + "\n\n" + text
@@ -106,6 +107,7 @@ class ChatPanel(private val project: Project) : JPanel(BorderLayout()), Disposab
         composer.onModelDetails = { service.store?.let { updateStatus(it.snapshot) } }
         service.addListener(listener)
         service.addInputListener(inputListener)
+        service.addNewChatListener(newChatListener)
         service.start()
         refresh()
     }
@@ -242,9 +244,12 @@ class ChatPanel(private val project: Project) : JPanel(BorderLayout()), Disposab
 
     internal fun drawsSoFar(): Int = redraw.runs
 
+    internal fun composer(): Composer = composer
+
     override fun dispose() {
         service.removeListener(listener)
         service.removeInputListener(inputListener)
+        service.removeNewChatListener(newChatListener)
     }
 }
 

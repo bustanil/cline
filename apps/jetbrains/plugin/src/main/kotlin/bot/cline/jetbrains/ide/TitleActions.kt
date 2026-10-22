@@ -44,7 +44,7 @@ abstract class TitleAction(text: String, description: String, icon: javax.swing.
 /** The + in the title bar: start a new chat. */
 class NewChatTitleAction : TitleAction("New Chat", "Start a new task", AllIcons.General.Add) {
     override fun actionPerformed(e: AnActionEvent) {
-        storeOf(e)?.clearTask()
+        e.project?.let { ClineProjectService.getInstance(it).newChat() }
     }
 }
 

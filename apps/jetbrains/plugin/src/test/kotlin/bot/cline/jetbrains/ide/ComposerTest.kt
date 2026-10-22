@@ -273,6 +273,21 @@ class ComposerTest : BasePlatformTestCase() {
         assertFalse(c.sendEnabled)
     }
 
+    fun `test reset empties the text the attachments the quotes and the message`() {
+        val c = composer()
+        c.input.text = "a draft"
+        c.addFiles(listOf(file("a.txt"), file("run.exe")))
+        c.addQuote("quoted", "with a reply")
+        assertFalse(c.statusText.isEmpty())
+        c.reset()
+        assertEquals("", c.input.text)
+        assertTrue(c.attachments.isEmpty)
+        assertTrue(c.strip().chipNames.isEmpty())
+        assertTrue(c.quotes.isEmpty())
+        assertEquals("", c.statusText)
+        assertFalse(c.sendEnabled)
+    }
+
     fun `test sending only quotes sends them as context`() {
         val c = composer()
         c.addQuote("a")

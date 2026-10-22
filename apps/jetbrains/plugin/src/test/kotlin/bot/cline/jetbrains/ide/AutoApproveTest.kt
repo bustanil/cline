@@ -71,6 +71,24 @@ class AutoApproveTest : BasePlatformTestCase() {
         Snapshots.save(footer, "footer-narrow", 330)
     }
 
+    fun `test starting a new chat empties every open composer and a removed panel is not told`() {
+        val service = ClineProjectService.getInstance(project)
+        val panel = ChatPanel(project)
+        try {
+            panel.composer().input.text = "an old draft"
+            panel.composer().addQuote("old quote")
+            service.newChat()
+            assertEquals("", panel.composer().input.text)
+            assertTrue(panel.composer().quotes.isEmpty())
+            panel.composer().input.text = "typed after"
+            panel.dispose()
+            service.newChat()
+            assertEquals("a disposed panel is left alone", "typed after", panel.composer().input.text)
+        } finally {
+            service.dispose()
+        }
+    }
+
     fun `test the title bar has a new chat and a history button with icons`() {
         val new = NewChatTitleAction()
         val history = HistoryTitleAction()

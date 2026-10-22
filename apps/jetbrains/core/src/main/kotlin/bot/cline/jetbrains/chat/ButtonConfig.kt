@@ -29,16 +29,18 @@ object ButtonConfigs {
     private fun single(text: String, action: ButtonAction) = ButtonConfig(false, true, text, null, action, null)
 
     val default = ButtonConfig(sendingDisabled = false, enableButtons = false)
-    val apiReqFailed = ButtonConfig(true, true, "Retry", "Start New Task", ButtonAction.RETRY, ButtonAction.NEW_TASK)
-    val cloudCreationUnconfirmed = ButtonConfig(true, true, "Start New Task", null, ButtonAction.NEW_TASK, null)
-    val mistakeLimitReached = ButtonConfig(false, true, "Proceed Anyways", "Start New Task", ButtonAction.PROCEED, ButtonAction.NEW_TASK)
+    // The webview also offers "Start New Task" next to some of these. This plugin does not: the + in the title bar
+    // starts a new chat, so the buttons would repeat it.
+    val apiReqFailed = ButtonConfig(true, true, "Retry", null, ButtonAction.RETRY, null)
+    val cloudCreationUnconfirmed = ButtonConfig(true, false)
+    val mistakeLimitReached = ButtonConfig(false, true, "Proceed Anyways", null, ButtonAction.PROCEED, null)
     val toolApprove = approveReject("Approve")
     val toolSave = approveReject("Save")
     val command = approveReject("Run Command")
     val commandOutput = single("Proceed While Running", ButtonAction.PROCEED)
-    val completionResult = single("Start New Task", ButtonAction.NEW_TASK)
+    val completionResult = default
     val resumeTask = single("Resume Task", ButtonAction.PROCEED)
-    val resumeCompletedTask = single("Start New Task", ButtonAction.NEW_TASK)
+    val resumeCompletedTask = default
     val newTask = single("Start New Task with Context", ButtonAction.NEW_TASK)
     val condense = single("Condense Conversation", ButtonAction.UTILITY)
     val reportBug = single("Report GitHub issue", ButtonAction.UTILITY)

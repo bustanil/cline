@@ -468,6 +468,16 @@ class Composer(
         add(JPanel(BorderLayout()).apply { isOpaque = false; border = JBUI.Borders.empty(4, 6, 0, 0); add(dismiss, BorderLayout.NORTH) }, BorderLayout.EAST)
     }
 
+    /** Empties the composer: the text, the attachments, the quotes and any message. A new chat starts from nothing. */
+    fun reset() {
+        input.text = ""
+        attachments.clear()
+        strip.refresh()
+        clearQuotes()
+        say(null)
+        updateSend()
+    }
+
     /** Puts an @ at the caret, which opens the file suggestions. */
     private fun insertAt() {
         input.requestFocusInWindow()
