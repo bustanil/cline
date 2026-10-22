@@ -49,6 +49,15 @@ message ShowTextDocumentOptions {
   optional bool preview = 1;
   optional bool preserve_focus = 2;
   optional int32 view_column = 3;
+  // Lines to select and scroll into view. Hosts that ignore it open the file at the top.
+  optional LineRange selection = 4;
+}
+
+message LineRange {
+  // 1-based and inclusive
+  int32 start_line = 1;
+  // Defaults to start_line
+  optional int32 end_line = 2;
 }
 
 message TextEditorInfo {

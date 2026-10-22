@@ -1,4 +1,5 @@
 import { StringRequest } from "@shared/proto/cline/common"
+import type { FileLocation } from "@shared/proto/cline/file"
 import { PlanActMode, TogglePlanActModeRequest } from "@shared/proto/cline/state"
 import { SquareArrowOutUpRightIcon } from "lucide-react"
 import { marked } from "marked"
@@ -14,6 +15,7 @@ import { Button } from "@/components/ui/button"
 import { useExtensionState } from "@/context/ExtensionStateContext"
 import { cn } from "@/lib/utils"
 import { FileServiceClient, StateServiceClient } from "@/services/grpc-client"
+import { isPotentialFilePath } from "@/utils/file-path"
 import { WithCopyButton } from "./CopyButton"
 import UnsafeImage from "./UnsafeImage"
 
@@ -336,9 +338,6 @@ const PreWithCopyButton = ({ children, ...preProps }: React.HTMLAttributes<HTMLP
 	)
 }
 
-// Regex to detect potential file paths (used in both remark plugin and component)
-const FILE_PATH_REGEX = /^(?!\/)[\w\-./]+(?<!\/)$/
-
 /**
  * Custom remark plugin that marks potential file paths in inline code blocks
  * This is synchronous - actual file existence checking happens in the React component
@@ -346,7 +345,7 @@ const FILE_PATH_REGEX = /^(?!\/)[\w\-./]+(?<!\/)$/
 const remarkMarkPotentialFilePaths = () => {
 	return (tree: Node) => {
 		visit(tree, "inlineCode", (node: Node & { value: string; data?: any }) => {
-			if (FILE_PATH_REGEX.test(node.value) && !node.value.includes("\n")) {
+			if (isPotentialFilePath(node.value)) {
 				// Mark as potential file path - actual checking happens in React component
 				node.data = node.data || {}
 				node.data.hProperties = node.data.hProperties || {}
@@ -361,42 +360,42 @@ const remarkMarkPotentialFilePaths = () => {
  * Shows the code immediately, then adds the file link icon when confirmed
  */
 const InlineCodeWithFileCheck: React.FC<ComponentProps<"code"> & { [key: string]: any }> = (props) => {
-	const [isFilePath, setIsFilePath] = useState<boolean | null>(null)
+	const [location, setLocation] = useState<FileLocation | null>(null)
 	const filePath = typeof props.children === "string" ? props.children : String(props.children || "")
-	const isPotentialFilePath = props["data-potential-file-path"] === "true"
+	const isMarkedAsFilePath = props["data-potential-file-path"] === "true"
 
 	useEffect(() => {
-		if (!isPotentialFilePath) {
+		if (!isMarkedAsFilePath) {
 			return
 		}
 
 		let cancelled = false
 
-		// Check file existence asynchronously
-		FileServiceClient.ifFileExistsRelativePath(StringRequest.create({ value: filePath }))
-			.then((exists) => {
+		// Resolve the reference asynchronously; an empty path means no such file
+		FileServiceClient.resolveFileReference(StringRequest.create({ value: filePath }))
+			.then((resolved) => {
 				if (!cancelled) {
-					setIsFilePath(exists.value)
+					setLocation(resolved.path ? resolved : null)
 				}
 			})
 			.catch((err) => {
-				console.debug(`Failed to check file existence for ${filePath}:`, err)
+				console.debug(`Failed to resolve file reference ${filePath}:`, err)
 				if (!cancelled) {
-					setIsFilePath(false)
+					setLocation(null)
 				}
 			})
 
 		return () => {
 			cancelled = true
 		}
-	}, [filePath, isPotentialFilePath])
+	}, [filePath, isMarkedAsFilePath])
 
 	// If confirmed as a file path, render as clickable button
-	if (isFilePath) {
+	if (location) {
 		return (
 			<Button
 				className="p-0 ml-0.5 leading-none align-middle transition-opacity text-preformat gap-0.5 inline text-left"
-				onClick={() => FileServiceClient.openFileRelativePath({ value: filePath })}
+				onClick={() => FileServiceClient.openFileLocation(location)}
 				size="icon"
 				title={`Open ${filePath} in editor`}
 				type="button"

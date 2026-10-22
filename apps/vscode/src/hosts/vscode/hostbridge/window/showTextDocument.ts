@@ -38,6 +38,16 @@ export async function showTextDocument(request: ShowTextDocumentRequest): Promis
 
 	const editor = await vscode.window.showTextDocument(uri, options)
 
+	const selection = request.options?.selection
+	if (selection && selection.startLine > 0) {
+		const lastLine = editor.document.lineCount - 1
+		const startLine = Math.min(selection.startLine - 1, lastLine)
+		const endLine = Math.min(Math.max((selection.endLine ?? selection.startLine) - 1, startLine), lastLine)
+		const range = new vscode.Range(startLine, 0, endLine, editor.document.lineAt(endLine).range.end.character)
+		editor.selection = new vscode.Selection(range.start, range.end)
+		editor.revealRange(range, vscode.TextEditorRevealType.InCenterIfOutsideViewport)
+	}
+
 	return TextEditorInfo.create({
 		documentPath: editor.document.uri.fsPath,
 		viewColumn: editor.viewColumn,

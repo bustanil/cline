@@ -1,5 +1,5 @@
 import { ClineMessage, ClineSayTool } from "@shared/ExtensionMessage"
-import { StringRequest } from "@shared/proto/cline/common"
+import { FileLocation } from "@shared/proto/cline/file"
 import { memo, useCallback, useMemo, useState } from "react"
 import { TypewriterText } from "@/components/chat/TypewriterText"
 import { cleanPathPrefix } from "@/components/common/CodeAccordian"
@@ -155,10 +155,16 @@ export const ToolGroupRenderer = memo(({ messages, allMessages, isLastGroup }: T
 
 	const summary = getToolGroupSummaryFromParsedTools(completedTools.map((item) => item.parsedTool))
 
-	const handleOpenFile = useCallback((filePath: string) => {
-		FileServiceClient.openFileRelativePath(StringRequest.create({ value: filePath })).catch((err) =>
-			console.error("Failed to open file:", err),
-		)
+	const handleOpenFile = useCallback((tool: ClineSayTool) => {
+		// Open at the lines the agent read, so a "lines 40-60" row lands on those lines
+		const isLineRead = tool.tool === "readFile" && tool.readLineStart != null
+		FileServiceClient.openFileLocation(
+			FileLocation.create({
+				path: tool.path || "",
+				startLine: isLineRead ? tool.readLineStart : undefined,
+				endLine: isLineRead ? (tool.readLineEnd ?? undefined) : undefined,
+			}),
+		).catch((err) => console.error("Failed to open file:", err))
 	}, [])
 
 	const handleItemToggle = useCallback((ts: number) => {
@@ -211,7 +217,7 @@ export const ToolGroupRenderer = memo(({ messages, allMessages, isLastGroup }: T
 						<div className="min-w-0" key={tool.ts}>
 							<Button
 								className="flex items-center gap-[3px] cursor-pointer text-[13px] text-description py-[1px] hover:text-link min-w-0 max-w-full px-0 leading-tight -my-0.5"
-								onClick={() => (isExpandable ? handleItemToggle(tool.ts) : handleOpenFile(info.path))}
+								onClick={() => (isExpandable ? handleItemToggle(tool.ts) : handleOpenFile(parsedTool))}
 								size="icon"
 								variant="text">
 								<info.icon className="opacity-70 shrink-0 size-[12px]" />

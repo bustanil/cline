@@ -2,7 +2,7 @@ import { writeFile } from "@utils/fs"
 import * as os from "os"
 import * as path from "path"
 import { HostProvider } from "@/hosts/host-provider"
-import { ShowMessageType } from "@/shared/proto/host/window"
+import { type LineRange, ShowMessageType } from "@/shared/proto/host/window"
 
 export async function openImage(dataUri: string) {
 	const matches = dataUri.match(/^data:image\/([a-zA-Z]+);base64,(.+)$/)
@@ -29,11 +29,16 @@ export async function openImage(dataUri: string) {
 	}
 }
 
-export async function openFile(absolutePath: string, preserveFocus: boolean = false, preview: boolean = false) {
+export async function openFile(
+	absolutePath: string,
+	preserveFocus: boolean = false,
+	preview: boolean = false,
+	selection?: LineRange,
+) {
 	try {
 		await HostProvider.window.showTextDocument({
 			path: absolutePath,
-			options: { preserveFocus, preview },
+			options: { preserveFocus, preview, selection },
 		})
 	} catch (_error) {
 		HostProvider.window.showMessage({

@@ -67,6 +67,14 @@ service FileService {
   // Open a file in editor by a relative path
   rpc openFileRelativePath(StringRequest) returns (Empty);
 
+  // Resolves a file reference written in chat (relative to any workspace root,
+  // absolute, or ~/, with an optional :line, :line:col, :start-end or #Lstart-Lend
+  // suffix) to an existing file. The returned path is empty when nothing matches.
+  rpc resolveFileReference(StringRequest) returns (FileLocation);
+
+  // Opens a file in the editor and selects the given line range, if any
+  rpc openFileLocation(FileLocation) returns (Empty);
+
   // Refreshes all hook toggles (discovers hooks and their enabled state)
   rpc refreshHooks(EmptyRequest) returns (HooksToggles);
 
@@ -90,6 +98,15 @@ service FileService {
 
   // Deletes an existing skill directory
   rpc deleteSkillFile(DeleteSkillRequest) returns (SkillsToggles);
+}
+
+// A file and optional line range, as shown or linked in chat
+message FileLocation {
+  // Absolute, or relative to a workspace root (the core resolves it)
+  string path = 1;
+  // 1-based and inclusive
+  optional int32 start_line = 2;
+  optional int32 end_line = 3;
 }
 
 // Response for refreshRules operation
