@@ -173,7 +173,7 @@ class ChatPanel(private val project: Project) : JPanel(BorderLayout()), Disposab
 
     private fun syncRows(store: ChatStore, snapshot: ChatSnapshot) {
         val atBottom = scroll.verticalScrollBar.let { it.value + it.visibleAmount >= it.maximum - 8 }
-        val items = Transcript.build(snapshot.messages, snapshot.turnState?.phase)
+        val items = Transcript.holdUnfinished(Transcript.build(snapshot.messages, snapshot.turnState?.phase), snapshot.turnState?.phase)
         val keys = items.map { it.key }
         // Rows only ever grow at the end while a task runs. Anything else (a new task, history) starts over.
         if (rows.keys.toList() != keys.take(rows.size)) clearRows()

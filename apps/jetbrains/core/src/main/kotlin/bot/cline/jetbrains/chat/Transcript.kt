@@ -38,6 +38,18 @@ object Transcript {
     fun build(messages: List<ChatMessage>, turnPhase: String? = null): List<TranscriptItem> =
         group(visible(combineCommandSequences(combineApiRequests(messages))), turnPhase)
 
+    /**
+     * Leaves out the answer text that is still being written, so it appears once, whole: when it is finished,
+     * or when something follows it (a tool call, thinking) and the model has moved on. Only the last row of a
+     * streaming turn can be unfinished, and only text and completion rows are held; a tool row shows at once.
+     */
+    fun holdUnfinished(items: List<TranscriptItem>, turnPhase: String?): List<TranscriptItem> {
+        val last = items.lastOrNull() as? TranscriptItem.Single ?: return items
+        val partial = last.message.raw.get("partial")?.let { it.isJsonPrimitive && it.asBoolean } == true
+        val text = last.message.isSay("text") || last.message.isSay("completion_result")
+        return if (turnPhase == "streaming" && partial && text) items.dropLast(1) else items
+    }
+
     /** Merges each `api_req_started` with the `api_req_finished` after it, and drops the finished rows. */
     fun combineApiRequests(messages: List<ChatMessage>): List<ChatMessage> {
         val combined = HashMap<Long, ChatMessage>()

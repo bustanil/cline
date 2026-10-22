@@ -212,3 +212,35 @@ class RowModelsTest {
         assertEquals("deep", ErrorText.of(ask(1, "api_req_failed", """{"error":{"message":"deep"}}""")))
     }
 }
+
+class HoldUnfinishedTest {
+    private fun say(ts: Long, kind: String, partial: Boolean = false) = ChatMessage(
+        JsonObject().apply {
+            addProperty("ts", ts)
+            addProperty("type", "say")
+            addProperty("say", kind)
+            addProperty("text", "x")
+            if (partial) addProperty("partial", true)
+        },
+    )
+
+    private fun rows(vararg m: ChatMessage): List<TranscriptItem> = m.map { TranscriptItem.Single(it) }
+
+    @Test
+    fun `an answer still being written is left out while the turn streams`() {
+        val out = Transcript.holdUnfinished(rows(say(1, "task"), say(2, "text", partial = true)), "streaming")
+        assertEquals(listOf(1L), out.map { it.key })
+    }
+
+    @Test
+    fun `a finished answer, a later row or an ended turn shows it`() {
+        assertEquals(2, Transcript.holdUnfinished(rows(say(1, "task"), say(2, "text")), "streaming").size)
+        assertEquals(3, Transcript.holdUnfinished(rows(say(1, "task"), say(2, "text", partial = true), say(3, "tool")), "streaming").size)
+        assertEquals(2, Transcript.holdUnfinished(rows(say(1, "task"), say(2, "text", partial = true)), "idle").size)
+    }
+
+    @Test
+    fun `a tool row that is still partial is not held`() {
+        assertEquals(2, Transcript.holdUnfinished(rows(say(1, "task"), say(2, "tool", partial = true)), "streaming").size)
+    }
+}
