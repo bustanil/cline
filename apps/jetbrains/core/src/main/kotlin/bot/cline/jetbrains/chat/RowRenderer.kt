@@ -9,7 +9,7 @@ data class RowColors(
     val removed: String = "#d03b3b",
     val muted: String = "#808080",
     val error: String = "#d03b3b",
-    val codeBackground: String = "#f6f5f3",
+    val codeBackground: String = "#ffffff",
     val codeBorder: String = "#e3e2e2",
     val tableHeader: String = "#f7f6f4",
 )
@@ -28,6 +28,8 @@ data class RowView(
     val collapsedTitle: String? = null,
     /** For Markdown rows: the same content as separate text, code and table blocks, so the IDE can draw cards. */
     val blocks: ((resolved: Map<String, FileLink>) -> List<MarkdownHtml.Block>)? = null,
+    /** True for what the user wrote: drawn as a rounded bubble on the right, with no heading. */
+    val userBubble: Boolean = false,
 )
 
 /**
@@ -48,8 +50,8 @@ object RowRenderer {
     private fun single(m: ChatMessage, c: RowColors, highlighter: CodeHighlighter?): RowView {
         val type = m.raw.str("type")
         return when {
-            m.isSay("task") -> markdown("Task", m, c, highlighter)
-            m.isSay("user_feedback") -> markdown("You", m, c, highlighter)
+            m.isSay("task") -> markdown(null, m, c, highlighter).copy(userBubble = true)
+            m.isSay("user_feedback") -> markdown(null, m, c, highlighter).copy(userBubble = true)
             m.isSay("text") || m.isSay("plan_completion_result") -> markdown(null, m, c, highlighter)
             m.isSay("reasoning") -> markdown(null, m, c, highlighter).copy(collapsedTitle = "Thinking")
             m.isSay("completion_result") || m.isAsk("completion_result") -> markdown("✓ Task completed", m, c, highlighter)

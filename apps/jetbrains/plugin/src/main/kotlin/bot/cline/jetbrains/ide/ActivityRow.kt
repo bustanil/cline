@@ -77,10 +77,12 @@ class ActivityRow(item: TranscriptItem.Activity, private val context: RowContext
         val box = JPanel().apply {
             layout = BoxLayout(this, BoxLayout.Y_AXIS)
             isOpaque = false
+            alignmentX = 0f
         }
         if (view.steps.size > 1) box.add(header())
         if (isOpen) {
             val list = JPanel().apply {
+                alignmentX = 0f
                 layout = BoxLayout(this, BoxLayout.Y_AXIS)
                 isOpaque = true
                 background = ChatColors.card

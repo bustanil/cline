@@ -65,7 +65,7 @@ class ChatPanelTest : BasePlatformTestCase() {
         assertTrue("no Retry button; buttons=${panel.all(JButton::class.java).map { it.text + ":" + it.isVisible }}", shown)
         val rows = panel.renderedHtml()
         println("ROWS: " + rows.map { it.replace(Regex("<[^>]+>"), " ").replace(Regex("\\s+"), " ").trim().take(60) })
-        assertTrue(rows.toString(), rows.any { it.contains("Task") && it.contains("say hello") })
+        assertTrue(rows.toString(), rows.any { it.contains("say hello") })
         assertTrue("the failure should show as an error row: $rows", rows.any { it.contains("Error") })
         // The toolbar follows the core: Plan/Act and the model button.
         val toggles = panel.all(javax.swing.JToggleButton::class.java)

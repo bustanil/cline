@@ -37,9 +37,12 @@ object ChatColors {
     val page: JBColor = JBColor(0xFCFBFA, 0x262624)
     val card: JBColor = JBColor(0xFFFFFF, 0x30302E)
     val border: JBColor = JBColor(0xE3E2E2, 0x45443F)
-    val terminal: JBColor = JBColor(0xF6F5F3, 0x1F1E1D)
+    val terminal: JBColor = JBColor(0xFFFFFF, 0x1F1E1D)
     val codeBackground: JBColor = JBColor(0xF1EFEC, 0x3A3936)
     val codeText: JBColor = JBColor(0x8B3A2B, 0xE0A58F)
+    /** What the user wrote: a bubble a little darker than the page. */
+    val bubble: JBColor = JBColor(0xF0EFEE, 0x3A3936)
+
     /** A table's header row: a little different from the white card. */
     val tableHeader: JBColor = JBColor(0xF7F6F4, 0x3A3936)
 }
@@ -52,6 +55,8 @@ class RowContext(
     val colors: () -> RowColors = ::themeColors,
     /** Colors the tokens in code blocks; null draws them plain. */
     val highlighter: bot.cline.jetbrains.chat.CodeHighlighter? = null,
+    /** Background of a code card. */
+    val codeBackground: java.awt.Color = ChatColors.terminal,
 ) {
     companion object {
         fun themeColors() = RowColors(
@@ -156,7 +161,7 @@ class HtmlRow(item: TranscriptItem, private val context: RowContext) : ChatRow {
             MarkdownHtml.BlockKind.TEXT -> pane
             else -> JPanel(BorderLayout()).apply {
                 isOpaque = true
-                background = if (kind == MarkdownHtml.BlockKind.CODE) ChatColors.terminal else ChatColors.card
+                background = if (kind == MarkdownHtml.BlockKind.CODE) context.codeBackground else ChatColors.card
                 border = BorderFactory.createCompoundBorder(JBUI.Borders.empty(4, 10), RoundedLineBorder(ChatColors.border, if (kind == MarkdownHtml.BlockKind.CODE) 12 else 6))
                 // A table's header row runs to the card's edge; code keeps some padding.
                 add(pane.apply { border = if (kind == MarkdownHtml.BlockKind.CODE) JBUI.Borders.empty(8, 10) else JBUI.Borders.empty(1) }, BorderLayout.CENTER)
@@ -215,6 +220,19 @@ class HtmlRow(item: TranscriptItem, private val context: RowContext) : ChatRow {
         }
     }
 
+    private var bubble: JPanel? = null
+
+    /** What the user wrote, in a rounded bubble on the right that is as wide as the text, up to most of the row. */
+    private fun bubbleAround(content: JComponent): JComponent = bubble ?: JPanel(BubbleLayout()).apply {
+        isOpaque = false
+        border = JBUI.Borders.empty(6, 10)
+        add(RoundedPanel(ChatColors.bubble, 14).apply {
+            layout = BorderLayout()
+            border = JBUI.Borders.empty(4, 6)
+            add(content, BorderLayout.CENTER)
+        })
+    }.also { bubble = it }
+
     private fun layoutParts() {
         panel.removeAll()
         val title = view.collapsedTitle
@@ -222,7 +240,10 @@ class HtmlRow(item: TranscriptItem, private val context: RowContext) : ChatRow {
             toggle.text = (if (expanded) "▾ " else "▸ ") + title
             panel.add(toggle, BorderLayout.NORTH)
         }
-        if (title == null || expanded) panel.add(if (view.blocks != null) blockPanel else pane, BorderLayout.CENTER)
+        if (title == null || expanded) {
+            val content: JComponent = if (view.blocks != null) blockPanel else pane
+            panel.add(if (view.userBubble) bubbleAround(content) else content, BorderLayout.CENTER)
+        }
         if (view.options.isNotEmpty()) panel.add(answers, BorderLayout.SOUTH)
         panel.revalidate()
         panel.repaint()
@@ -241,4 +262,74 @@ class HtmlRow(item: TranscriptItem, private val context: RowContext) : ChatRow {
     }
 
     internal val answerButtons: List<JButton> get() = answers.components.filterIsInstance<JButton>()
+}
+
+
+/** A panel that paints a rounded background. */
+class RoundedPanel(private val color: java.awt.Color, private val arc: Int) : JPanel() {
+    init {
+        isOpaque = false
+    }
+
+    override fun paintComponent(g: java.awt.Graphics) {
+        val g2 = g.create() as java.awt.Graphics2D
+        try {
+            g2.setRenderingHint(java.awt.RenderingHints.KEY_ANTIALIASING, java.awt.RenderingHints.VALUE_ANTIALIAS_ON)
+            g2.color = color
+            g2.fillRoundRect(0, 0, width, height, JBUI.scale(arc), JBUI.scale(arc))
+        } finally {
+            g2.dispose()
+        }
+        super.paintComponent(g)
+    }
+}
+
+/**
+ * Puts its one child at the right edge, as wide as the child wants but no more than [maxFraction] of the
+ * width. Text that wraps then gets a bubble that shrinks to a short message and caps a long one.
+ */
+class BubbleLayout(private val maxFraction: Double = 0.85) : java.awt.LayoutManager {
+    override fun addLayoutComponent(name: String?, comp: java.awt.Component?) {}
+
+    override fun removeLayoutComponent(comp: java.awt.Component?) {}
+
+    private fun naturalWidth(child: java.awt.Component): Int {
+        child.setSize(Short.MAX_VALUE.toInt(), 10)
+        return child.preferredSize.width
+    }
+
+    private fun settle(c: java.awt.Component) {
+        if (c is java.awt.Container) {
+            c.doLayout()
+            c.components.forEach(::settle)
+        }
+    }
+
+    private fun heightAt(child: java.awt.Component, width: Int): Int {
+        child.setSize(width, 10)
+        settle(child)
+        return child.preferredSize.height
+    }
+
+    private fun widthFor(child: java.awt.Component, available: Int): Int =
+        minOf(naturalWidth(child), (available * maxFraction).toInt().coerceAtLeast(1))
+
+    override fun layoutContainer(parent: java.awt.Container) {
+        val child = parent.components.firstOrNull() ?: return
+        val insets = parent.insets
+        val available = (parent.width - insets.left - insets.right).coerceAtLeast(1)
+        val width = widthFor(child, available)
+        child.setBounds(insets.left + available - width, insets.top, width, heightAt(child, width))
+        settle(child)
+    }
+
+    override fun preferredLayoutSize(parent: java.awt.Container): java.awt.Dimension {
+        val child = parent.components.firstOrNull() ?: return java.awt.Dimension()
+        val insets = parent.insets
+        val available = (if (parent.width > 0) parent.width else naturalWidth(child)) - insets.left - insets.right
+        val width = widthFor(child, available.coerceAtLeast(1))
+        return java.awt.Dimension(parent.width.coerceAtLeast(width + insets.left + insets.right), heightAt(child, width) + insets.top + insets.bottom)
+    }
+
+    override fun minimumLayoutSize(parent: java.awt.Container): java.awt.Dimension = java.awt.Dimension(0, preferredLayoutSize(parent).height)
 }

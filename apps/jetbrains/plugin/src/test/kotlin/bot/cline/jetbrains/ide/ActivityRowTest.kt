@@ -169,6 +169,32 @@ class ActivityRowTest : BasePlatformTestCase() {
         paint(HtmlRow(TranscriptItem.Single(message), RowContext(FileLinks(Core()), highlighter = IdeCodeHighlighter(project))).component, "markdown-tables")
     }
 
+    fun `test snapshot of user bubbles`() {
+        val long = ChatMessage(JsonObject().apply { addProperty("ts", 1); addProperty("type", "say"); addProperty("say", "task"); addProperty("text", "Yes, continue with step 3: port buttonConfig.ts so each ask kind gets its two buttons, wired to askResponse and cancelTask, and then keep going with the rest of the steps without waiting for me to confirm each one.") })
+        val short = ChatMessage(JsonObject().apply { addProperty("ts", 2); addProperty("type", "say"); addProperty("say", "user_feedback"); addProperty("text", "and dont stop until finish all steps") })
+        val panel = javax.swing.JPanel().apply { layout = javax.swing.BoxLayout(this, javax.swing.BoxLayout.Y_AXIS); isOpaque = true; background = ChatColors.page }
+        for (m in listOf(long, short)) panel.add(HtmlRow(TranscriptItem.Single(m), RowContext(FileLinks(Core()))).component)
+        panel.add(row("idle").component)
+        paint(panel, "user-bubbles")
+
+        // The conversation from the screenshot: a short prompt, a reply, then the next prompt.
+        val hello = ChatMessage(JsonObject().apply { addProperty("ts", 1); addProperty("type", "say"); addProperty("say", "task"); addProperty("text", "hello") })
+        val reply = ChatMessage(JsonObject().apply { addProperty("ts", 2); addProperty("type", "say"); addProperty("say", "text"); addProperty("text", "Hello! I'm ready to help with your **fake-acquirer** project.\n\nWhat would you like to work on?") })
+        val explain = ChatMessage(JsonObject().apply { addProperty("ts", 3); addProperty("type", "say"); addProperty("say", "user_feedback"); addProperty("text", "explain AuthCaptureAcquirer") })
+        val convo = javax.swing.JPanel().apply { layout = javax.swing.BoxLayout(this, javax.swing.BoxLayout.Y_AXIS); isOpaque = true; background = ChatColors.page }
+        for (m in listOf(hello, reply, explain)) convo.add(HtmlRow(TranscriptItem.Single(m), RowContext(FileLinks(Core()))).component)
+        convo.add(row("idle").component)
+        paint(convo, "conversation")
+    }
+
+    fun `test code background previews`() {
+        val message = ChatMessage(JsonObject().apply { addProperty("ts", 9); addProperty("type", "say"); addProperty("say", "text"); addProperty("text", javaReply) })
+        for ((name, color) in listOf("lighter" to java.awt.Color(0xF9F8F6), "white" to java.awt.Color(0xFFFFFF), "current" to java.awt.Color(0xF6F5F3))) {
+            val ctx = RowContext(FileLinks(Core()), highlighter = IdeCodeHighlighter(project), codeBackground = color)
+            paint(HtmlRow(TranscriptItem.Single(message), ctx).component, "preview-code-$name")
+        }
+    }
+
     fun `test snapshot of a markdown reply with highlighted code`() {
         val message = ChatMessage(JsonObject().apply { addProperty("ts", 9); addProperty("type", "say"); addProperty("say", "text"); addProperty("text", javaReply) })
         val ctx = RowContext(FileLinks(Core()), highlighter = IdeCodeHighlighter(project))

@@ -19,9 +19,14 @@ class RowRendererTest {
     }
 
     @Test
-    fun `task and user feedback get a heading`() {
-        assertTrue(render(say(1, "task", "Do it")).second.contains("<b>Task</b>"))
-        assertTrue(render(say(2, "user_feedback", "ok")).second.contains("<b>You</b>"))
+    fun `what the user wrote is a bubble without a heading`() {
+        for (m in listOf(say(1, "task", "Do it"), say(2, "user_feedback", "ok"))) {
+            val (view, html) = render(m)
+            assertTrue(view.userBubble)
+            assertFalse(html.contains("<b>Task</b>") || html.contains("<b>You</b>"), html)
+        }
+        assertFalse(render(say(3, "text", "answer")).first.userBubble)
+        assertFalse(render(ask(4, "followup", "question?")).first.userBubble)
     }
 
     @Test
