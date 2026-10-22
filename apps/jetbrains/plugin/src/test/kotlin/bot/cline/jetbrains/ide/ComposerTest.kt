@@ -246,7 +246,7 @@ class ComposerTest : BasePlatformTestCase() {
     }
 
     fun `test the popup fits inside the tool window`() {
-        val scale = com.intellij.util.ui.JBUI::scale
+        fun scale(i: Int) = com.intellij.util.ui.JBUI.scale(i)
         assertEquals(scale(300), ModelPopup.widthFor(scale(356)))
         assertEquals(scale(240), ModelPopup.widthFor(scale(200)))
         assertEquals("a wide window does not widen it", scale(300), ModelPopup.widthFor(scale(1400)))
