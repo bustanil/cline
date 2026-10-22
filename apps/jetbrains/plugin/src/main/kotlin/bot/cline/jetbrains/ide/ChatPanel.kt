@@ -139,7 +139,16 @@ class ChatPanel(private val project: Project) : JPanel(BorderLayout()), Disposab
         val keys = items.map { it.key }
         // Rows only ever grow at the end while a task runs. Anything else (a new task, history) starts over.
         if (rows.keys.toList() != keys.take(rows.size)) clearRows()
-        val context = RowContext(store.fileLinks, reply = { text -> report(store.send(text)) }, highlighter = IdeCodeHighlighter(project))
+        val context = RowContext(
+            store.fileLinks,
+            reply = { text -> report(store.send(text)) },
+            highlighter = IdeCodeHighlighter(project),
+            quotes = object : QuoteActions {
+                override fun addQuote(quote: String) = composer.setQuote(quote)
+
+                override fun sendReply(quote: String, text: String) = report(store.send(bot.cline.jetbrains.chat.Quote.format(quote, text)))
+            },
+        )
         for ((index, item) in items.withIndex()) {
             val existing = rows[item.key]
             if (existing != null && existing.update(item)) continue

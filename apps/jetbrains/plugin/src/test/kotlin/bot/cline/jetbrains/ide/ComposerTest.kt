@@ -184,6 +184,39 @@ class ComposerTest : BasePlatformTestCase() {
         override fun subscribe(service: String, method: String, messageJson: String, onMessage: (String) -> Unit, onClose: (Throwable?) -> Unit) = bot.cline.jetbrains.bridge.Subscription {}
     }
 
+    fun `test a quote shows as a card and goes in front of the reply in the VS Code format`() {
+        val c = composer()
+        c.setQuote("  the router contract \n")
+        assertEquals("the router contract", c.quote)
+        c.input.text = "why is that safe?"
+        c.submitForTest()
+        assertEquals("[context] \n>  the router contract \n[/context] \n\n why is that safe?", sent.single().first)
+        assertNull("the quote is used once", c.quote)
+    }
+
+    fun `test a quote alone cannot be sent and can be dismissed`() {
+        val c = composer()
+        c.setQuote("something")
+        assertFalse(c.sendEnabled)
+        c.submitForTest()
+        assertTrue(sent.isEmpty())
+        c.clearQuote()
+        assertNull(c.quote)
+        c.setQuote("   ")
+        assertNull(c.quote)
+    }
+
+    fun `test snapshot of the reply popup and the quote card`() {
+        val c = composer()
+        c.setQuote("provider dropdown prints the raw object (my popup got a renderer but this dialog did not), and a saved key should show as a masked field")
+        c.input.text = "What do you mean by that?"
+        Snapshots.save(c, "quote-card", 520)
+        val popup = ReplyPopupPanel("provider dropdown prints the raw object", onSend = {}, onAddToComposer = {})
+        popup.background = ChatColors.card
+        popup.isOpaque = true
+        Snapshots.save(popup, "reply-popup", 340)
+    }
+
     fun `test while Cline works the send button is a stop button that cancels the task`() {
         val core = streamingCore("streaming")
         val store = bot.cline.jetbrains.chat.ChatStore(core).also { it.start().get() }

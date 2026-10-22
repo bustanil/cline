@@ -138,7 +138,7 @@ class StepPanel(private val context: RowContext, private val openByDefault: () -
     private var userOpen: Boolean? = null
     private val resolved = HashMap<String, FileLink>()
     private val asked = HashSet<String>()
-    private val pane = newHtmlPane(context.inlineCodeRule) { href -> openChatLink(href, resolved, context) }
+    private val pane = newHtmlPane(context.inlineCodeRule, context.quotes) { href -> openChatLink(href, resolved, context) }
     private val terminal = JPanel(BorderLayout()).apply {
         background = ChatColors.terminal
         border = BorderFactory.createCompoundBorder(RoundedLineBorder(ChatColors.border, 8), JBUI.Borders.empty(4, 4))

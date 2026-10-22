@@ -72,6 +72,8 @@ class RowContext(
     val codeBackground: java.awt.Color = ChatColors.terminal,
     /** CSS rule for inline code. */
     val inlineCodeRule: String = ChatColors.inlineCodeRule(),
+    /** What selecting words in a row and replying does; null turns the reply popup off. */
+    val quotes: QuoteActions? = null,
 ) {
     companion object {
         fun themeColors() = RowColors(
@@ -102,7 +104,7 @@ object ChatRows {
 }
 
 /** An HTML pane that draws row content and passes link clicks to [onLink]. */
-internal fun newHtmlPane(inlineCodeRule: String = ChatColors.inlineCodeRule(), onLink: (String?) -> Unit): JBHtmlPane =
+internal fun newHtmlPane(inlineCodeRule: String = ChatColors.inlineCodeRule(), quotes: QuoteActions? = null, onLink: (String?) -> Unit): JBHtmlPane =
     JBHtmlPane(JBHtmlPaneStyleConfiguration.builder().build(), JBHtmlPaneConfiguration.builder().build()).apply {
         isEditable = false
         isOpaque = false
@@ -113,6 +115,7 @@ internal fun newHtmlPane(inlineCodeRule: String = ChatColors.inlineCodeRule(), o
         for (rule in ChatColors.headingRules) (editorKit as? javax.swing.text.html.HTMLEditorKit)?.styleSheet?.addRule(rule)
         (editorKit as? javax.swing.text.html.HTMLEditorKit)?.styleSheet?.addRule("li { margin-top: 0px; margin-bottom: 0px; } ul { margin-top: 2px; margin-bottom: 2px; } ol { margin-top: 2px; margin-bottom: 2px; }")
         addHyperlinkListener { event -> if (event.eventType == HyperlinkEvent.EventType.ACTIVATED) onLink(event.description ?: event.url?.toString()) }
+        quotes?.let { SelectionReplyController(this, it).attach() }
     }
 
 /** Opens a link made by [MarkdownHtml]: a file through the core, or a web page in the browser. */
@@ -132,7 +135,7 @@ internal fun openChatLink(href: String?, resolved: Map<String, FileLink>, contex
  * appear a moment after the text.
  */
 class HtmlRow(item: TranscriptItem, private val context: RowContext) : ChatRow {
-    private val pane = newHtmlPane(context.inlineCodeRule) { href -> openLink(href) }
+    private val pane = newHtmlPane(context.inlineCodeRule, context.quotes) { href -> openLink(href) }
     private val blockPanel = JPanel().apply {
         layout = javax.swing.BoxLayout(this, javax.swing.BoxLayout.Y_AXIS)
         isOpaque = false
@@ -173,7 +176,7 @@ class HtmlRow(item: TranscriptItem, private val context: RowContext) : ChatRow {
 
     /** One block of a Markdown reply: plain text, or a code block or table in a card of its own. */
     private inner class BlockView(var kind: MarkdownHtml.BlockKind) {
-        val pane: JBHtmlPane = newHtmlPane(context.inlineCodeRule) { href -> openLink(href) }
+        val pane: JBHtmlPane = newHtmlPane(context.inlineCodeRule, context.quotes) { href -> openLink(href) }
         val component: JComponent = when (kind) {
             MarkdownHtml.BlockKind.TEXT -> pane
             else -> JPanel(BorderLayout()).apply {

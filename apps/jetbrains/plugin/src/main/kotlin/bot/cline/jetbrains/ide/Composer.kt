@@ -293,6 +293,11 @@ class Composer(
         emptyText.text = "Message or run a task, @ for files"
     }
     private val strip = AttachmentStrip(attachments) { updateSend() }
+
+    /** The words being replied to, sent with the next message. */
+    var quote: String? = null
+        private set
+    private val quoteHolder = JPanel(BorderLayout()).apply { isOpaque = false; isVisible = false }
     private val clear = Color(0, 0, 0, 0)
     private val at = PillButton("@", { clear }, round = true).apply {
         font = JBUI.Fonts.label().deriveFont(java.awt.Font.BOLD, JBUI.Fonts.label().size2D + 1f)
@@ -350,7 +355,7 @@ class Composer(
             add(JPanel(BorderLayout()).apply { isOpaque = false; border = JBUI.Borders.empty(0, 0, 4, 8); add(send, BorderLayout.SOUTH) }, BorderLayout.EAST)
         }
         val card = CardPanel(ChatColors.card, ChatColors.border).apply {
-            add(strip, BorderLayout.NORTH)
+            add(JPanel(BorderLayout()).apply { isOpaque = false; add(quoteHolder, BorderLayout.NORTH); add(strip, BorderLayout.CENTER) }, BorderLayout.NORTH)
             add(inputArea, BorderLayout.CENTER)
             add(bottom, BorderLayout.SOUTH)
         }
@@ -381,6 +386,45 @@ class Composer(
         // While Cline works the button stops it, so it is always available then.
         send.isEnabled = running || isSendReady()
         send.repaint()
+    }
+
+    /** Replies to [text]: shows it as a card above the box, and sends it as context with the next message. */
+    fun setQuote(text: String) {
+        val clean = bot.cline.jetbrains.chat.Quote.clean(text)
+        quote = clean.ifEmpty { null }
+        quoteHolder.removeAll()
+        quoteHolder.isVisible = quote != null
+        if (quote != null) quoteHolder.add(quoteCard(quote!!), BorderLayout.CENTER)
+        quoteHolder.revalidate()
+        quoteHolder.repaint()
+        input.requestFocusInWindow()
+    }
+
+    fun clearQuote() = setQuote("")
+
+    /** The card in the style of the VS Code client: a bar, the words, a "Reply" tag and a way to dismiss it. */
+    private fun quoteCard(text: String): JComponent = JPanel(BorderLayout()).apply {
+        isOpaque = false
+        border = JBUI.Borders.empty(8, 10, 0, 10)
+        val tag = JBLabel("Reply").apply { foreground = UIUtil.getContextHelpForeground(); font = JBUI.Fonts.smallFont() }
+        val dismiss = JBLabel("×").apply {
+            foreground = UIUtil.getContextHelpForeground()
+            toolTipText = "Remove the quote"
+            cursor = Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)
+            addMouseListener(object : MouseAdapter() {
+                override fun mouseClicked(e: MouseEvent) = clearQuote()
+            })
+        }
+        add(
+            RoundedPanel(ChatColors.bubble, 10).apply {
+                layout = BorderLayout(0, JBUI.scale(4))
+                border = JBUI.Borders.empty(8, 10)
+                add(quoteBlock(text, 220, widthPx = 250), BorderLayout.CENTER)
+                add(tag, BorderLayout.SOUTH)
+            },
+            BorderLayout.CENTER,
+        )
+        add(JPanel(BorderLayout()).apply { isOpaque = false; border = JBUI.Borders.empty(4, 6, 0, 0); add(dismiss, BorderLayout.NORTH) }, BorderLayout.EAST)
     }
 
     /** Puts an @ at the caret, which opens the file suggestions. */
@@ -534,12 +578,15 @@ class Composer(
         val text = input.text.trim()
         val images = attachments.images
         val files = attachments.files
+        // A quote goes in front of the reply as context, as the VS Code client does.
+        val message = bot.cline.jetbrains.chat.Quote.format(quote, text)
         input.text = ""
+        clearQuote()
         attachments.clear()
         strip.refresh()
         say(null)
         updateSend()
-        onSubmit(text, images, files)
+        onSubmit(message, images, files)
     }
 
     private fun showModelPopup() {
