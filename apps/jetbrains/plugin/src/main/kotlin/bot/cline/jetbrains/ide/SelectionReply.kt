@@ -14,7 +14,10 @@ import java.awt.Cursor
 import java.awt.Dimension
 import java.awt.Point
 import java.awt.event.KeyAdapter
+import java.awt.event.ActionEvent
 import java.awt.event.KeyEvent
+import javax.swing.AbstractAction
+import javax.swing.KeyStroke
 import java.awt.event.MouseAdapter
 import java.awt.event.MouseEvent
 import javax.swing.JComponent
@@ -56,12 +59,27 @@ class ReplyPopupPanel(
         emptyText.text = "Reply to Cline"
         border = JBUI.Borders.empty(2, 0)
         isOpaque = false
+        // Enter is bound as an action of the field itself, so it is handled once even if the popup or the IDE also
+        // sees the key; the other Enter events are swallowed so none reaches whatever gets focus when the popup closes.
+        val enter = KeyStroke.getKeyStroke(KeyEvent.VK_ENTER, 0)
+        inputMap.put(enter, "cline.sendReply")
+        actionMap.put("cline.sendReply", object : AbstractAction() {
+            override fun actionPerformed(e: ActionEvent?) = send()
+        })
         addKeyListener(object : KeyAdapter() {
             override fun keyPressed(e: KeyEvent) {
-                if (e.keyCode == KeyEvent.VK_ENTER && !e.isShiftDown) {
+                if (e.keyCode == KeyEvent.VK_ENTER) {
                     e.consume()
-                    send()
+                    if (!e.isShiftDown) send()
                 }
+            }
+
+            override fun keyTyped(e: KeyEvent) {
+                if (e.keyChar == '\n' || e.keyChar == '\r') e.consume()
+            }
+
+            override fun keyReleased(e: KeyEvent) {
+                if (e.keyCode == KeyEvent.VK_ENTER) e.consume()
             }
         })
     }
