@@ -67,6 +67,7 @@ class ChatPanel(private val project: Project) : JPanel(BorderLayout()), Disposab
             }
         })
     }
+    private val buttonBar = JPanel(BorderLayout())
     private var lastPhase: String? = null
     private var shownStore: ChatStore? = null
     private val composer: Composer = Composer(project, store = { service.store }, onSubmit = { text, images, files -> sendMessage(text, images, files) })
@@ -105,7 +106,8 @@ class ChatPanel(private val project: Project) : JPanel(BorderLayout()), Disposab
         val top = JPanel(BorderLayout()).apply {
             add(JPanel(FlowLayout(FlowLayout.LEFT)).apply { add(notice); add(settingsButton) }, BorderLayout.CENTER)
         }
-        val buttons = JPanel(BorderLayout()).apply {
+        val buttons = buttonBar.apply {
+            border = JBUI.Borders.emptyTop(6)
             add(JPanel(FlowLayout(FlowLayout.LEFT)).apply { add(primary); add(secondary) }, BorderLayout.CENTER)
             add(dismiss, BorderLayout.EAST)
         }
@@ -113,7 +115,7 @@ class ChatPanel(private val project: Project) : JPanel(BorderLayout()), Disposab
             border = JBUI.Borders.empty(0, 0, 4, 0)
             background = ChatColors.page
             isOpaque = true
-            add(JPanel(BorderLayout()).apply { isOpaque = false; border = JBUI.Borders.empty(6, 10, 0, 10); add(changed, BorderLayout.NORTH); add(buttons, BorderLayout.CENTER) }, BorderLayout.NORTH)
+            add(JPanel(BorderLayout()).apply { isOpaque = false; border = JBUI.Borders.empty(0, 10); add(changed, BorderLayout.NORTH); add(buttons, BorderLayout.CENTER) }, BorderLayout.NORTH)
             add(JPanel(BorderLayout()).apply { isOpaque = false; add(approve, BorderLayout.NORTH); add(composer, BorderLayout.CENTER); add(status, BorderLayout.SOUTH) }, BorderLayout.CENTER)
         }
         add(top, BorderLayout.NORTH)
@@ -235,6 +237,7 @@ class ChatPanel(private val project: Project) : JPanel(BorderLayout()), Disposab
         primary.isVisible = shown && config?.primaryText != null
         secondary.isVisible = shown && config?.secondaryText != null
         dismiss.isVisible = shown && (config?.primaryText != null || config?.secondaryText != null)
+        buttonBar.isVisible = dismiss.isVisible
         primary.text = config?.primaryText
         secondary.text = config?.secondaryText
         primary.isEnabled = config?.enableButtons == true
