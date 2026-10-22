@@ -83,7 +83,7 @@ class EditorActionsTest : BasePlatformTestCase() {
 
     fun `test the tool window has an icon and the toolbar has an Open Cline button`() {
         val manager = ActionManager.getInstance()
-        val open = manager.getAction("Cline.OpenToolWindow")
+        val open = manager.getAction("ClineNative.OpenToolWindow")
         assertNotNull(open)
         assertNotNull("the action needs an icon to show in the toolbar", open.templatePresentation.icon)
         for (groupId in listOf("MainToolbarRight", "ToolsMenu")) {
@@ -92,16 +92,16 @@ class EditorActionsTest : BasePlatformTestCase() {
         }
         assertNotNull("the icon file ships with the plugin", javaClass.getResource("/icons/cline.svg"))
         assertNotNull(javaClass.getResource("/icons/cline_dark.svg"))
-        val window = com.intellij.openapi.wm.ToolWindowManager.getInstance(project).getToolWindow("Cline")
+        val window = com.intellij.openapi.wm.ToolWindowManager.getInstance(project).getToolWindow(OpenClineAction.TOOL_WINDOW_ID)
         // The light fixture may not create tool windows; when it does, it must have an icon.
         if (window != null) assertNotNull(window.icon)
     }
 
     fun `test the actions are registered and the editor menu group exists`() {
         val manager = ActionManager.getInstance()
-        for (id in listOf("Cline.AddToChat", "Cline.Fix", "Cline.Explain", "Cline.Improve", "Cline.EditorActions")) assertNotNull(id, manager.getAction(id))
+        for (id in listOf("ClineNative.AddToChat", "ClineNative.Fix", "ClineNative.Explain", "ClineNative.Improve", "ClineNative.EditorActions")) assertNotNull(id, manager.getAction(id))
         val popup = manager.getAction("EditorPopupMenu") as com.intellij.openapi.actionSystem.ActionGroup
-        assertTrue(popup.getChildren(null).any { it === manager.getAction("Cline.EditorActions") })
+        assertTrue(popup.getChildren(null).any { it === manager.getAction("ClineNative.EditorActions") })
     }
 
     private fun Container.textAreas(): List<JTextComponent> =
@@ -137,5 +137,23 @@ class EditorActionsTest : BasePlatformTestCase() {
         } finally {
             s.corePath = ""; s.nodePath = ""; s.dataDir = ""
         }
+    }
+}
+
+/** The IDs this plugin registers must not equal the official Cline plugin's, or one of the two fails to load. */
+class NoClashTest : BasePlatformTestCase() {
+    fun `test the ids are not the plain Cline ones`() {
+        assertEquals("Cline Native", OpenClineAction.TOOL_WINDOW_ID)
+        val xml = javaClass.getResource("/META-INF/plugin.xml")!!.readText()
+        assertTrue(xml.contains("""<toolWindow id="Cline Native""""))
+        assertFalse(xml.contains("""id="Cline""""))
+        assertFalse("action ids use the ClineNative prefix", Regex("""<(action|group) id="Cline\.""").containsMatchIn(xml))
+        assertTrue(xml.contains("""<notificationGroup id="Cline Native""""))
+    }
+
+    fun `test the settings use their own file`() {
+        val annotation = ClineSettings::class.java.getAnnotation(com.intellij.openapi.components.State::class.java)
+        assertEquals("ClineNativeSettings", annotation.name)
+        assertEquals("cline-native.xml", annotation.storages.single().value)
     }
 }

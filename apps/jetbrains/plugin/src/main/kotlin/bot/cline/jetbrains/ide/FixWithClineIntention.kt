@@ -12,7 +12,7 @@ import com.intellij.psi.PsiFile
 class FixWithClineIntention : IntentionAction, DumbAware {
     override fun getText() = "Fix with Cline"
 
-    override fun getFamilyName() = "Cline"
+    override fun getFamilyName() = "Cline Native"
 
     override fun startInWriteAction() = false
 

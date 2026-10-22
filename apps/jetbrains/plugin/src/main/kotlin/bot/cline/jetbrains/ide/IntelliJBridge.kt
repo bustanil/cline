@@ -50,7 +50,7 @@ class IntelliJBridge(private val project: Project) : IdeBridge {
                 "WARNING" -> NotificationType.WARNING
                 else -> NotificationType.INFORMATION
             }
-            NotificationGroupManager.getInstance().getNotificationGroup("Cline")
+            NotificationGroupManager.getInstance().getNotificationGroup("Cline Native")
                 .createNotification("Cline", listOfNotNull(message.text, message.detail).joinToString("\n"), type)
                 .notify(project)
             return null

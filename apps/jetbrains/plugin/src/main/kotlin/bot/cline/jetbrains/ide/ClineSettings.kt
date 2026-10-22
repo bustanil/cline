@@ -8,7 +8,8 @@ import com.intellij.openapi.components.Storage
 
 /** Where to find Node and `cline-core.js`. Blank means "look in the usual places". */
 @Service(Service.Level.APP)
-@State(name = "ClineSettings", storages = [Storage("cline.xml")])
+// Its own file and component name, so the settings of the official plugin and these never share one.
+@State(name = "ClineNativeSettings", storages = [Storage("cline-native.xml")])
 class ClineSettings : PersistentStateComponent<ClineSettings.State> {
     data class State(
         var nodePath: String = "",

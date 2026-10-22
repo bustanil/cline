@@ -7,13 +7,13 @@ import com.intellij.openapi.ui.TextFieldWithBrowseButton
 import com.intellij.util.ui.FormBuilder
 import javax.swing.JComponent
 
-/** Settings > Tools > Cline. */
+/** Settings > Tools > Cline Native. */
 class ClineSettingsConfigurable : Configurable {
     private val node = TextFieldWithBrowseButton().apply { addBrowseFolderListener(null, FileChooserDescriptorFactory.createSingleFileDescriptor().withTitle("Node Executable")) }
     private val core = TextFieldWithBrowseButton().apply { addBrowseFolderListener(null, FileChooserDescriptorFactory.createSingleFileDescriptor().withTitle("cline-core.js")) }
     private val data = TextFieldWithBrowseButton().apply { addBrowseFolderListener(null, FileChooserDescriptorFactory.createSingleFolderDescriptor().withTitle("Data Folder")) }
 
-    override fun getDisplayName() = "Cline"
+    override fun getDisplayName() = "Cline Native"
 
     override fun createComponent(): JComponent = FormBuilder.createFormBuilder()
         .addLabeledComponent("Node executable (blank: find automatically):", node)

@@ -113,9 +113,9 @@ class ChatPanel(private val project: Project) : JPanel(BorderLayout()), Disposab
         notice.text = when (status) {
             ClineProjectService.Status.NOT_STARTED -> "Cline has not started."
             ClineProjectService.Status.STARTING -> "Starting Cline…"
-            ClineProjectService.Status.MISSING_NODE -> "Node was not found. Set its path in Settings > Tools > Cline."
-            ClineProjectService.Status.MISSING_CORE -> "cline-core.js was not found. Set its path in Settings > Tools > Cline."
-            ClineProjectService.Status.WRONG_NODE -> (service.nodeProblem ?: "Wrong Node version.") + " Set a Node 22 path in Settings > Tools > Cline."
+            ClineProjectService.Status.MISSING_NODE -> "Node was not found. Set its path in Settings > Tools > Cline Native."
+            ClineProjectService.Status.MISSING_CORE -> "cline-core.js was not found. Set its path in Settings > Tools > Cline Native."
+            ClineProjectService.Status.WRONG_NODE -> (service.nodeProblem ?: "Wrong Node version.") + " Set a Node 22 path in Settings > Tools > Cline Native."
             ClineProjectService.Status.CONNECTED -> ""
         }
         (notice.parent as? JPanel)?.isVisible = !connected

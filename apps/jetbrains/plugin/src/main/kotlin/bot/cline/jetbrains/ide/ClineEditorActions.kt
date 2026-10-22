@@ -34,10 +34,10 @@ abstract class ClineEditorAction(private val command: EditorCommand) : AnAction(
         /** Builds the context, shows the Cline window, waits for the core, and sends the command. */
         fun send(project: Project, editor: Editor, command: EditorCommand) {
             val context = EditorContextBuilder.build(project, editor) ?: return notify(project, "Select some code first.")
-            ToolWindowManager.getInstance(project).getToolWindow("Cline")?.show()
+            ToolWindowManager.getInstance(project).getToolWindow(OpenClineAction.TOOL_WINDOW_ID)?.show()
             ClineProjectService.getInstance(project).awaitStore().whenComplete { store, error ->
                 if (error != null || store == null) {
-                    notify(project, "Cline is not running. Check Settings > Tools > Cline.")
+                    notify(project, "Cline is not running. Check Settings > Tools > Cline Native.")
                 } else {
                     store.runEditorCommand(command, context).whenComplete { _, failure ->
                         if (failure != null) notify(project, "Cline could not take that: " + (failure.cause?.message ?: failure.message))
@@ -48,7 +48,7 @@ abstract class ClineEditorAction(private val command: EditorCommand) : AnAction(
 
         private fun notify(project: Project, text: String) {
             ApplicationManager.getApplication().invokeLater {
-                NotificationGroupManager.getInstance().getNotificationGroup("Cline")
+                NotificationGroupManager.getInstance().getNotificationGroup("Cline Native")
                     .createNotification("Cline", text, NotificationType.WARNING).notify(project)
             }
         }

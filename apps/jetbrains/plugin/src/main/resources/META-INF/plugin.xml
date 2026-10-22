@@ -1,15 +1,15 @@
 <idea-plugin>
     <id>bot.cline.jetbrains</id>
-    <name>Cline</name>
+    <name>Cline Native</name>
     <vendor>Cline</vendor>
     <description>Cline for JetBrains IDEs, with a native chat.</description>
     <depends>com.intellij.modules.platform</depends>
 
     <extensions defaultExtensionNs="com.intellij">
-        <toolWindow id="Cline" anchor="right" icon="/icons/cline.svg" factoryClass="bot.cline.jetbrains.ide.ClineToolWindowFactory"/>
+        <toolWindow id="Cline Native" anchor="right" icon="/icons/cline.svg" factoryClass="bot.cline.jetbrains.ide.ClineToolWindowFactory"/>
         <applicationConfigurable parentId="tools" instance="bot.cline.jetbrains.ide.ClineSettingsConfigurable"
-                                 id="bot.cline.jetbrains.settings" displayName="Cline"/>
-        <notificationGroup id="Cline" displayType="BALLOON"/>
+                                 id="bot.cline.jetbrains.settings" displayName="Cline Native"/>
+        <notificationGroup id="Cline Native" displayType="BALLOON"/>
         <intentionAction>
             <language/>
             <className>bot.cline.jetbrains.ide.FixWithClineIntention</className>
@@ -18,22 +18,22 @@
     </extensions>
 
     <actions>
-        <action id="Cline.OpenToolWindow" class="bot.cline.jetbrains.ide.OpenClineAction" text="Open Cline"
+        <action id="ClineNative.OpenToolWindow" class="bot.cline.jetbrains.ide.OpenClineAction" text="Open Cline Native"
                 description="Open or close the Cline tool window" icon="/icons/cline.svg">
             <add-to-group group-id="MainToolbarRight" anchor="first"/>
             <add-to-group group-id="ToolsMenu" anchor="first"/>
         </action>
 
-        <group id="Cline.EditorActions" text="Cline" popup="true" icon="AllIcons.Actions.Lightning">
-            <action id="Cline.AddToChat" class="bot.cline.jetbrains.ide.AddToClineAction" text="Add to Cline"
+        <group id="ClineNative.EditorActions" text="Cline" popup="true" icon="AllIcons.Actions.Lightning">
+            <action id="ClineNative.AddToChat" class="bot.cline.jetbrains.ide.AddToClineAction" text="Add to Cline"
                     description="Add the selected code to the Cline chat">
                 <keyboard-shortcut keymap="$default" first-keystroke="ctrl alt K"/>
             </action>
-            <action id="Cline.Fix" class="bot.cline.jetbrains.ide.FixWithClineAction" text="Fix with Cline"
+            <action id="ClineNative.Fix" class="bot.cline.jetbrains.ide.FixWithClineAction" text="Fix with Cline"
                     description="Ask Cline to fix the selected code or the problem at the caret"/>
-            <action id="Cline.Explain" class="bot.cline.jetbrains.ide.ExplainWithClineAction" text="Explain with Cline"
+            <action id="ClineNative.Explain" class="bot.cline.jetbrains.ide.ExplainWithClineAction" text="Explain with Cline"
                     description="Ask Cline to explain the selected code"/>
-            <action id="Cline.Improve" class="bot.cline.jetbrains.ide.ImproveWithClineAction" text="Improve with Cline"
+            <action id="ClineNative.Improve" class="bot.cline.jetbrains.ide.ImproveWithClineAction" text="Improve with Cline"
                     description="Ask Cline to improve the selected code"/>
             <add-to-group group-id="EditorPopupMenu" anchor="first"/>
         </group>

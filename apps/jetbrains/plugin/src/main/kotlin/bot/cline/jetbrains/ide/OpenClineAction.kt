@@ -19,6 +19,7 @@ class OpenClineAction : AnAction(), DumbAware {
     }
 
     companion object {
-        const val TOOL_WINDOW_ID = "Cline"
+        /** Not "Cline": the official plugin uses that ID, and a second tool window with the same ID fails to register. */
+        const val TOOL_WINDOW_ID = "Cline Native"
     }
 }
