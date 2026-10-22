@@ -67,8 +67,8 @@ class ActivityRow(item: TranscriptItem.Activity, private val context: RowContext
         return true
     }
 
-    /** While the activity is the live end of the chat it is open; once finished it folds away. */
-    private val isOpen: Boolean get() = view.steps.size == 1 || (groupOpen ?: view.running)
+    /** A group, and each step in it, starts folded, running or not; the user opens what they want to read. */
+    private val isOpen: Boolean get() = view.steps.size == 1 || (groupOpen ?: false)
 
     private var shownShape: List<Any?>? = null
 
@@ -79,9 +79,8 @@ class ActivityRow(item: TranscriptItem.Activity, private val context: RowContext
     private fun render() {
         val live = view.steps.map { it.key }.toSet()
         steps.keys.retainAll(live)
-        for ((index, step) in view.steps.withIndex()) {
-            val isLast = index == view.steps.lastIndex
-            steps.getOrPut(step.key) { StepPanel(context, openByDefault = { view.running && isLast }) }.update(step)
+        for (step in view.steps) {
+            steps.getOrPut(step.key) { StepPanel(context, openByDefault = { false }) }.update(step)
         }
         // The steps update themselves in place. The row is rearranged only when its shape changed: a step
         // was added or finished, or it was opened or closed. Not on every streamed line of output.

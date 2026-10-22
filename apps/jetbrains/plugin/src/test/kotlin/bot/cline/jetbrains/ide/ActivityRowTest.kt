@@ -75,6 +75,7 @@ class ActivityRowTest : BasePlatformTestCase() {
     fun `test streamed command output updates the text without rebuilding the row or the step`() {
         val r = ActivityRow(runningActivity("line 0"), RowContext(FileLinks(Core())))
         val step = r.stepPanels().single()
+        step.toggle() // steps start folded; open it to watch the output
         val layouts = r.layouts
         val draws = step.draws
         val lines = StringBuilder("line 0")
@@ -112,12 +113,12 @@ class ActivityRowTest : BasePlatformTestCase() {
         assertTrue(lines[3], lines[3].startsWith("Ran cd /work/project && ./gradlew") && lines[3].endsWith("…"))
     }
 
-    fun `test a running activity is open and its last step says Running`() {
+    fun `test a running activity starts folded and its last step says Running`() {
         val r = row("streaming")
         assertEquals("Running 4 steps", r.title)
-        assertTrue(r.isGroupOpen)
+        assertFalse(r.isGroupOpen)
         val steps = r.stepPanels()
-        assertTrue(steps.last().isOpen)
+        assertFalse(steps.last().isOpen)
         assertTrue(steps.last().summary, steps.last().summary.startsWith("Running"))
         assertFalse(steps.first().isOpen)
         assertTrue(steps.first().summary.startsWith("Ran "))
@@ -137,10 +138,10 @@ class ActivityRowTest : BasePlatformTestCase() {
     fun `test the user's choice survives an update and the running step finishes`() {
         val r = row("streaming")
         r.stepPanels().first().toggle()
-        r.toggleGroup() // closes the group the user was watching
-        assertFalse(r.isGroupOpen)
+        r.toggleGroup() // opens the group the user wants to read
+        assertTrue(r.isGroupOpen)
         assertTrue(r.update(activity("idle")))
-        assertFalse(r.isGroupOpen)
+        assertTrue(r.isGroupOpen)
         assertEquals("Ran 4 steps", r.title)
         assertTrue(r.stepPanels().first().isOpen)
     }
