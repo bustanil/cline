@@ -114,6 +114,20 @@ class MarkdownHtmlTest {
     }
 
     @Test
+    fun `a big picture is sized down to the chat`() {
+        val big = java.io.File.createTempFile("cline-big", ".png").apply { deleteOnExit() }
+        javax.imageio.ImageIO.write(java.awt.image.BufferedImage(2000, 1000, java.awt.image.BufferedImage.TYPE_INT_RGB), "png", big)
+        val html = MarkdownHtml.render("![wide](${big.path})")
+        assertTrue(html.contains("width=\"720\""), html)
+        assertTrue(html.contains("height=\"360\""), html)
+
+        val small = java.io.File.createTempFile("cline-small", ".png").apply { deleteOnExit() }
+        javax.imageio.ImageIO.write(java.awt.image.BufferedImage(120, 60, java.awt.image.BufferedImage.TYPE_INT_RGB), "png", small)
+        val kept = MarkdownHtml.render("![small](${small.path})")
+        assertTrue(kept.contains("width=\"120\"") && kept.contains("height=\"60\""), kept)
+    }
+
+    @Test
     fun `a br in code stays code`() {
         val html = MarkdownHtml.render("`<br>`\n\n```\n<br>\n```")
         assertFalse(html.contains("<br>"), html)

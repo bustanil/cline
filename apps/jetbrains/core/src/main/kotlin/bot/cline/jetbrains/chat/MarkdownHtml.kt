@@ -77,7 +77,7 @@ object MarkdownHtml {
             .sanitizeUrls(true)
             .urlSanitizer(DefaultUrlSanitizer(listOf("http", "https", "mailto", "file", FILE_SCHEME.removeSuffix(":"))))
             .build().render(document)
-        return (if (codeStyle != null) wrapTables(html, codeStyle) else html).replace(BREAK_MARK, "<br>")
+        return fitImages((if (codeStyle != null) wrapTables(html, codeStyle) else html).replace(BREAK_MARK, "<br>"))
     }
 
     /**
@@ -99,6 +99,42 @@ object MarkdownHtml {
             }
         })
     }
+
+    /**
+     * Pictures from a file are as large as the file says — a rendered diagram can be thousands of pixels wide — so
+     * they are given a size that fits the chat. A picture that cannot be read is left as it came.
+     */
+    private fun fitImages(html: String): String = IMG.replace(html) { match ->
+        val tag = match.value
+        val src = SRC.find(tag)?.groupValues?.get(1) ?: return@replace tag
+        if (!src.startsWith("file:")) return@replace tag
+        val (width, height) = imageSize(src) ?: return@replace tag
+        val scale = minOf(1.0, MAX_IMAGE_WIDTH.toDouble() / width, MAX_IMAGE_HEIGHT.toDouble() / height)
+        val sized = " width=\"${(width * scale).toInt()}\" height=\"${(height * scale).toInt()}\""
+        if (tag.endsWith("/>")) tag.dropLast(2).trimEnd() + sized + " />" else tag.dropLast(1).trimEnd() + sized + ">"
+    }
+
+    /** The size of the picture at [src], read from its header rather than by decoding it. */
+    private fun imageSize(src: String): Pair<Int, Int>? = runCatching {
+        java.net.URI(src).toURL().openStream().use { stream ->
+            javax.imageio.ImageIO.createImageInputStream(stream)?.use { input ->
+                val readers = javax.imageio.ImageIO.getImageReaders(input)
+                if (!readers.hasNext()) return@use null
+                val reader = readers.next()
+                try {
+                    reader.input = input
+                    reader.getWidth(0) to reader.getHeight(0)
+                } finally {
+                    reader.dispose()
+                }
+            }
+        }
+    }.getOrNull()
+
+    private val IMG = Regex("<img\\b[^>]*>")
+    private val SRC = Regex("src=\"([^\"]*)\"")
+    private const val MAX_IMAGE_WIDTH = 720
+    private const val MAX_IMAGE_HEIGHT = 900
 
     /** A Windows path, which starts with a drive instead of a slash. */
     private val DRIVE = Regex("^[A-Za-z]:[\\\\/]")
@@ -188,7 +224,7 @@ object MarkdownHtml {
         val out = mutableListOf<Block>()
         var pending = org.commonmark.node.Document()
         fun flush() {
-            if (pending.firstChild != null) out += Block(BlockKind.TEXT, text.render(pending).replace(BREAK_MARK, "<br>"))
+            if (pending.firstChild != null) out += Block(BlockKind.TEXT, fitImages(text.render(pending).replace(BREAK_MARK, "<br>")))
             pending = org.commonmark.node.Document()
         }
         var node = document.firstChild
