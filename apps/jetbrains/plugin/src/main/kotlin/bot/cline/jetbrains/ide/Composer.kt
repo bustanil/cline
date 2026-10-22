@@ -294,10 +294,15 @@ class Composer(
     }
     private val strip = AttachmentStrip(attachments) { updateSend() }
 
-    /** The words being replied to, sent with the next message. */
-    var quote: String? = null
-        private set
-    private val quoteHolder = JPanel(BorderLayout()).apply { isOpaque = false; isVisible = false }
+    private val quoteList = mutableListOf<bot.cline.jetbrains.chat.QuoteEntry>()
+
+    /** The passages being replied to, each with what was said about it, sent with the next message. */
+    val quotes: List<bot.cline.jetbrains.chat.QuoteEntry> get() = quoteList.toList()
+    private val quoteHolder = JPanel().apply {
+        layout = javax.swing.BoxLayout(this, javax.swing.BoxLayout.Y_AXIS)
+        isOpaque = false
+        isVisible = false
+    }
     private val clear = Color(0, 0, 0, 0)
     private val at = PillButton("@", { clear }, round = true).apply {
         font = JBUI.Fonts.label().deriveFont(java.awt.Font.BOLD, JBUI.Fonts.label().size2D + 1f)
@@ -389,7 +394,7 @@ class Composer(
         updateSend()
     }
 
-    private fun isSendReady() = connected && (input.text.isNotBlank() || !attachments.isEmpty)
+    private fun isSendReady() = connected && (input.text.isNotBlank() || !attachments.isEmpty || quoteList.isNotEmpty())
 
     private fun updateSend() {
         send.running = running
@@ -398,39 +403,65 @@ class Composer(
         send.repaint()
     }
 
-    /** Replies to [text]: shows it as a card above the box, and sends it as context with the next message. */
-    fun setQuote(text: String) {
-        val clean = bot.cline.jetbrains.chat.Quote.clean(text)
-        quote = clean.ifEmpty { null }
-        quoteHolder.removeAll()
-        quoteHolder.isVisible = quote != null
-        if (quote != null) quoteHolder.add(quoteCard(quote!!), BorderLayout.CENTER)
-        quoteHolder.revalidate()
-        quoteHolder.repaint()
+    /**
+     * Adds [text] as a quote with the [reply] typed for it, if any. It shows as a card above the box and goes out as
+     * context with the next message. Quotes pile up; the same quote with the same reply is not added twice.
+     */
+    fun addQuote(text: String, reply: String = "") {
+        val entry = bot.cline.jetbrains.chat.QuoteEntry(bot.cline.jetbrains.chat.Quote.clean(text), reply.trim())
+        if (entry.quote.isEmpty() || entry in quoteList) return
+        quoteList += entry
+        rebuildQuotes()
         input.requestFocusInWindow()
     }
 
-    fun clearQuote() = setQuote("")
+    fun removeQuote(index: Int) {
+        if (index !in quoteList.indices) return
+        quoteList.removeAt(index)
+        rebuildQuotes()
+    }
 
-    /** The card in the style of the VS Code client: a bar, the words, a "Reply" tag and a way to dismiss it. */
-    private fun quoteCard(text: String): JComponent = JPanel(BorderLayout()).apply {
+    fun clearQuotes() {
+        quoteList.clear()
+        rebuildQuotes()
+    }
+
+    private fun rebuildQuotes() {
+        quoteHolder.removeAll()
+        quoteList.forEachIndexed { index, entry -> quoteHolder.add(quoteCard(index, entry)) }
+        quoteHolder.isVisible = quoteList.isNotEmpty()
+        quoteHolder.revalidate()
+        quoteHolder.repaint()
+        updateSend()
+    }
+
+    /**
+     * A card for one quote, as in the VS Code client: a bar, the words, and under them what was said about them
+     * (or a "Reply" tag when nothing was), with a way to remove it.
+     */
+    private fun quoteCard(index: Int, entry: bot.cline.jetbrains.chat.QuoteEntry): JComponent = JPanel(BorderLayout()).apply {
         isOpaque = false
+        alignmentX = 0f
         border = JBUI.Borders.empty(8, 10, 0, 10)
-        val tag = JBLabel("Reply").apply { foreground = UIUtil.getContextHelpForeground(); font = JBUI.Fonts.smallFont() }
         val dismiss = JBLabel("×").apply {
             foreground = UIUtil.getContextHelpForeground()
             toolTipText = "Remove the quote"
             cursor = Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)
             addMouseListener(object : MouseAdapter() {
-                override fun mouseClicked(e: MouseEvent) = clearQuote()
+                override fun mouseClicked(e: MouseEvent) = removeQuote(index)
             })
+        }
+        val below: JComponent = if (entry.reply.isNotEmpty()) {
+            JBLabel("<html><div style='width:${JBUI.scale(250)}px'>" + entry.reply.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("\n", "<br>") + "</div></html>")
+        } else {
+            JBLabel("Reply").apply { foreground = UIUtil.getContextHelpForeground(); font = JBUI.Fonts.smallFont() }
         }
         add(
             RoundedPanel(ChatColors.bubble, 10).apply {
-                layout = BorderLayout(0, JBUI.scale(4))
+                layout = BorderLayout(0, JBUI.scale(6))
                 border = JBUI.Borders.empty(8, 10)
-                add(quoteBlock(text, 220, widthPx = 250), BorderLayout.CENTER)
-                add(tag, BorderLayout.SOUTH)
+                add(quoteBlock(entry.quote, 220, widthPx = 250), BorderLayout.CENTER)
+                add(below, BorderLayout.SOUTH)
             },
             BorderLayout.CENTER,
         )
@@ -589,10 +620,10 @@ class Composer(
         val text = input.text.trim()
         val images = attachments.images
         val files = attachments.files
-        // A quote goes in front of the reply as context, as the VS Code client does.
-        val message = bot.cline.jetbrains.chat.Quote.format(quote, text)
+        // Quotes go in front of the reply as context, as the VS Code client does, each with its own reply.
+        val message = bot.cline.jetbrains.chat.Quote.formatAll(quoteList.toList(), text)
         input.text = ""
-        clearQuote()
+        clearQuotes()
         attachments.clear()
         strip.refresh()
         say(null)

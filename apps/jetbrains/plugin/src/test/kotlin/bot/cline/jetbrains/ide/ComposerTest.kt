@@ -208,34 +208,87 @@ class ComposerTest : BasePlatformTestCase() {
         override fun subscribe(service: String, method: String, messageJson: String, onMessage: (String) -> Unit, onClose: (Throwable?) -> Unit) = bot.cline.jetbrains.bridge.Subscription {}
     }
 
-    fun `test a quote shows as a card and goes in front of the reply in the VS Code format`() {
+    fun `test one quote and the box text goes out in the VS Code format and the quote is used once`() {
         val c = composer()
-        c.setQuote("  the router contract \n")
-        assertEquals("the router contract", c.quote)
+        c.addQuote("  the router contract \n")
+        assertEquals(listOf(bot.cline.jetbrains.chat.QuoteEntry("the router contract")), c.quotes)
         c.input.text = "why is that safe?"
         c.submitForTest()
         assertEquals("[context] \n>  the router contract \n[/context] \n\n why is that safe?", sent.single().first)
-        assertNull("the quote is used once", c.quote)
+        assertTrue("the quotes are used once", c.quotes.isEmpty())
     }
 
-    fun `test a quote alone cannot be sent and can be dismissed`() {
+    fun `test several quotes pile up each with its own reply and go out together`() {
         val c = composer()
-        c.setQuote("something")
-        assertFalse(c.sendEnabled)
+        c.addQuote("first passage", "this one is wrong")
+        c.addQuote("second passage")
+        c.addQuote("third passage", "and this?")
+        assertEquals(listOf("first passage", "second passage", "third passage"), c.quotes.map { it.quote })
+        assertEquals(listOf("this one is wrong", "", "and this?"), c.quotes.map { it.reply })
+        c.input.text = "please fix them"
         c.submitForTest()
-        assertTrue(sent.isEmpty())
-        c.clearQuote()
-        assertNull(c.quote)
-        c.setQuote("   ")
-        assertNull(c.quote)
+        val expected = "[context] \n>  first passage \n[/context] \n\n this one is wrong\n\n" +
+            "[context] \n>  second passage \n[/context]\n\n" +
+            "[context] \n>  third passage \n[/context] \n\n and this?\n\nplease fix them"
+        assertEquals(expected, sent.single().first)
     }
 
-    fun `test snapshot of the reply popup and the quote card`() {
+    fun `test a card shows the reply that was typed and a Reply tag only when there is none`() {
         val c = composer()
-        c.setQuote("provider dropdown prints the raw object (my popup got a renderer but this dialog did not), and a saved key should show as a masked field")
-        c.input.text = "What do you mean by that?"
-        Snapshots.save(c, "quote-card", 520)
-        val popup = ReplyPopupPanel("provider dropdown prints the raw object", onSend = {}, onAddToComposer = {})
+        c.addQuote("with a reply", "my words about it")
+        c.addQuote("without one")
+        fun labels(component: java.awt.Component): List<String> = when (component) {
+            is com.intellij.ui.components.JBLabel -> listOf(component.text.orEmpty().replace(Regex("<[^>]+>"), "").trim())
+            is java.awt.Container -> component.components.flatMap(::labels)
+            else -> emptyList()
+        }
+        val all = labels(c)
+        assertTrue(all.toString(), all.any { it.contains("my words about it") })
+        assertTrue(all.toString(), all.count { it == "Reply" } == 1)
+    }
+
+    fun `test the same quote with the same reply is not added twice and a blank one is ignored`() {
+        val c = composer()
+        c.addQuote("same", "r")
+        c.addQuote("same", "r")
+        c.addQuote("   ")
+        assertEquals(1, c.quotes.size)
+        c.addQuote("same", "another reply")
+        assertEquals(2, c.quotes.size)
+    }
+
+    fun `test send is enabled with only quotes and a quote can be removed`() {
+        val c = composer()
+        assertFalse(c.sendEnabled)
+        c.addQuote("something")
+        assertTrue("quotes alone can be sent", c.sendEnabled)
+        c.addQuote("else")
+        c.removeQuote(0)
+        assertEquals(listOf("else"), c.quotes.map { it.quote })
+        assertTrue(c.sendEnabled)
+        c.removeQuote(0)
+        assertFalse(c.sendEnabled)
+        c.addQuote("again")
+        c.clearQuotes()
+        assertFalse(c.sendEnabled)
+    }
+
+    fun `test sending only quotes sends them as context`() {
+        val c = composer()
+        c.addQuote("a")
+        c.addQuote("b", "about b")
+        c.submitForTest()
+        assertEquals("[context] \n>  a \n[/context]\n\n[context] \n>  b \n[/context] \n\n about b", sent.single().first)
+        assertTrue(c.quotes.isEmpty())
+    }
+
+    fun `test snapshot of several quote cards`() {
+        val c = composer()
+        c.addQuote("provider dropdown prints the raw object (my popup got a renderer but this dialog did not)", "Can you fix this one first?")
+        c.addQuote("a saved key should show as a masked field")
+        c.input.text = "and keep the rest as is"
+        Snapshots.save(c, "quote-cards", 520)
+        val popup = ReplyPopupPanel("provider dropdown prints the raw object", onSend = {}, onAddToComposer = { _ -> })
         popup.background = ChatColors.card
         popup.isOpaque = true
         Snapshots.save(popup, "reply-popup", 340)

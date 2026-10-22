@@ -23,8 +23,8 @@ import javax.swing.text.JTextComponent
 
 /** What replying to part of a message can do. */
 interface QuoteActions {
-    /** Puts the quote above the composer, to be sent with the next message. */
-    fun addQuote(quote: String)
+    /** Puts the quote above the composer, with any [reply] already typed for it, to be sent with the next message. */
+    fun addQuote(quote: String, reply: String = "")
 
     /** Sends [text] now, with [quote] as its context. */
     fun sendReply(quote: String, text: String)
@@ -49,7 +49,8 @@ internal fun quoteBlock(quote: String, maxChars: Int, widthPx: Int = 220): JComp
 class ReplyPopupPanel(
     private val quote: String,
     private val onSend: (text: String) -> Unit,
-    private val onAddToComposer: () -> Unit,
+    /** Gets what was typed in the box (it may be empty), so the quote card can show it. */
+    private val onAddToComposer: (reply: String) -> Unit,
 ) : JPanel(BorderLayout(0, JBUI.scale(6))) {
     val field = JBTextField().apply {
         emptyText.text = "Reply to Cline"
@@ -68,7 +69,7 @@ class ReplyPopupPanel(
         toolTipText = "Add the quote to your message"
         cursor = Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)
         addMouseListener(object : MouseAdapter() {
-            override fun mouseClicked(e: MouseEvent) = onAddToComposer()
+            override fun mouseClicked(e: MouseEvent) = addToComposer()
         })
     }
 
@@ -86,7 +87,8 @@ class ReplyPopupPanel(
         if (text.isNotEmpty()) onSend(text)
     }
 
-    fun addToComposer() = onAddToComposer()
+    /** Adds the quote to the composer along with what was typed so far. */
+    fun addToComposer() = onAddToComposer(field.text.trim())
 }
 
 /** Shows the popup. Replaced in tests. */
@@ -139,7 +141,7 @@ class SelectionReplyController(
         val content = ReplyPopupPanel(
             quote,
             onSend = { text -> presenter.hide(); quotes.sendReply(quote, text) },
-            onAddToComposer = { presenter.hide(); quotes.addQuote(quote) },
+            onAddToComposer = { reply -> presenter.hide(); quotes.addQuote(quote, reply) },
         )
         presenter.show(content, pane, at)
     }

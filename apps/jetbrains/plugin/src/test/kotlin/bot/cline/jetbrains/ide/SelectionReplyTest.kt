@@ -18,9 +18,9 @@ class SelectionReplyTest : BasePlatformTestCase() {
     }
 
     private class Recorder : QuoteActions {
-        val added = mutableListOf<String>()
+        val added = mutableListOf<Pair<String, String>>()
         val sent = mutableListOf<Pair<String, String>>()
-        override fun addQuote(quote: String) { added += quote }
+        override fun addQuote(quote: String, reply: String) { added += quote to reply }
         override fun sendReply(quote: String, text: String) { sent += quote to text }
     }
 
@@ -87,8 +87,21 @@ class SelectionReplyTest : BasePlatformTestCase() {
         selectWords(pane, "this part")
         controller.maybeShow()
         presenter.shown!!.addToComposer()
-        assertEquals(listOf("this part"), actions.added)
+        assertEquals(listOf("this part" to ""), actions.added)
         assertTrue(actions.sent.isEmpty())
+    }
+
+    fun `test what was typed goes with the quote when it is added to the composer`() {
+        val pane = pane("quote this part of the answer")
+        val actions = Recorder()
+        val presenter = Presenter()
+        val controller = SelectionReplyController(pane, actions, presenter)
+        selectWords(pane, "this part")
+        controller.maybeShow()
+        val popup = presenter.shown!!
+        popup.field.text = "  I disagree with this  "
+        popup.addToComposer()
+        assertEquals(listOf("this part" to "I disagree with this"), actions.added)
     }
 
     fun `test a pane made with quote actions gets the reply behavior`() {
