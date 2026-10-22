@@ -60,4 +60,39 @@ class RevealPipelineTest {
         assertEquals(2, first.size)
         assertTrue(lastText(first).length < answer.length, "shown whole: ${lastText(first)}")
     }
+
+    @Test
+    fun `the answer the core retags as a plan result is revealed too`() {
+        // In plan mode the core retags the turn's last text row in place, ts and all, so the panel sees a
+        // plan_completion_result where it saw a partial text row a moment before.
+        val pacer = RevealPacer()
+        val turn = mutableListOf(say(1, "task", "go"))
+        draw(turn, "streaming", pacer)
+        turn += say(2, "text", answer.substring(0, 20), partial = true)
+        assertEquals(1, draw(turn, "streaming", pacer).size)
+        turn[turn.lastIndex] = say(2, "plan_completion_result", answer)
+        val first = draw(turn, "idle", pacer)
+        assertEquals(2, first.size)
+        assertTrue(lastText(first).length < answer.length, "shown whole: ${lastText(first)}")
+        assertTrue(pacer.revealing)
+    }
+
+    @Test
+    fun `an answer the core reports as an ask is revealed too`() {
+        val pacer = RevealPacer()
+        val turn = mutableListOf(say(1, "task", "go"))
+        draw(turn, "streaming", pacer)
+        val ask = ChatMessage(
+            JsonObject().apply {
+                addProperty("ts", 2)
+                addProperty("type", "ask")
+                addProperty("ask", "completion_result")
+                addProperty("text", answer)
+            },
+        )
+        turn += ask
+        val first = draw(turn, "idle", pacer)
+        assertEquals(2, first.size)
+        assertTrue(lastText(first).length < answer.length, "shown whole: ${lastText(first)}")
+    }
 }

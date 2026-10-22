@@ -71,7 +71,17 @@ class RevealPacer(private val baseStep: Int = 2) {
         taken[key] = 0
     }
 
-    private fun paced(message: ChatMessage) = message.isSay("text") || message.isSay("completion_result")
+    /**
+     * A row that draws as the answer. The core retags the turn's last text row in place when the turn ends, to
+     * `completion_result` in act mode or `plan_completion_result` in plan mode, and all of it is already written
+     * by then, so each of these has to be paced or the answer lands whole.
+     */
+    private fun paced(message: ChatMessage) =
+        message.isSay("text") ||
+            message.isSay("completion_result") ||
+            message.isSay("plan_completion_result") ||
+            message.isAsk("completion_result") ||
+            message.isAsk("plan_completion_result")
 
     /** The end of the word at or after [from], so a word is never cut in half; at least [baseStep] characters. */
     private fun wordEnd(text: String, from: Int): Int {
