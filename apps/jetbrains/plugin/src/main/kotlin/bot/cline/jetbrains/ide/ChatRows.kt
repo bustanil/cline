@@ -1,87 +1,161 @@
 package bot.cline.jetbrains.ide
 
-import bot.cline.jetbrains.chat.ChatMessage
+import bot.cline.jetbrains.chat.FileLink
 import bot.cline.jetbrains.chat.FileLinks
-import com.google.gson.GsonBuilder
-import com.google.gson.JsonParser
+import bot.cline.jetbrains.chat.MarkdownHtml
+import bot.cline.jetbrains.chat.RowColors
+import bot.cline.jetbrains.chat.RowRenderer
+import bot.cline.jetbrains.chat.RowView
+import bot.cline.jetbrains.chat.TranscriptItem
+import com.intellij.ide.BrowserUtil
+import com.intellij.openapi.application.ApplicationManager
+import com.intellij.openapi.application.ModalityState
+import com.intellij.ui.ColorUtil
+import com.intellij.ui.JBColor
+import com.intellij.ui.components.JBHtmlPane
+import com.intellij.ui.components.JBHtmlPaneConfiguration
+import com.intellij.ui.components.JBHtmlPaneStyleConfiguration
 import com.intellij.ui.components.JBLabel
-import com.intellij.ui.components.JBTextArea
 import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.UIUtil
 import java.awt.BorderLayout
+import java.awt.FlowLayout
+import java.awt.event.MouseAdapter
+import java.awt.event.MouseEvent
+import javax.swing.JButton
 import javax.swing.JComponent
 import javax.swing.JPanel
+import javax.swing.event.HyperlinkEvent
 
-/** One row of the transcript. [update] runs when a newer copy of the message arrives. */
+/** What rows need from the chat: file links, sending an answer, and theme colors. */
+class RowContext(
+    val fileLinks: FileLinks,
+    /** Sends [text] as the user's answer (an option button). */
+    val reply: (String) -> Unit = {},
+    val colors: () -> RowColors = ::themeColors,
+) {
+    companion object {
+        fun themeColors() = RowColors(
+            added = ColorUtil.toHtmlColor(JBColor(0x2E9E4F, 0x6CC17E)),
+            removed = ColorUtil.toHtmlColor(JBColor(0xD03B3B, 0xE06C6C)),
+            muted = ColorUtil.toHtmlColor(UIUtil.getContextHelpForeground()),
+            error = ColorUtil.toHtmlColor(JBColor(0xD03B3B, 0xE06C6C)),
+        )
+    }
+}
+
+/** One row of the transcript. */
 interface ChatRow {
     val component: JComponent
 
-    fun update(message: ChatMessage)
+    /** Shows [item]. Returns false if this row cannot stand for it, so the chat makes a new one. */
+    fun update(item: TranscriptItem): Boolean
 }
 
-/** What rows need from the chat: turning file paths into links, and opening them. */
-class RowContext(val fileLinks: FileLinks)
-
 object ChatRows {
-    private val markdownSays = setOf("text", "completion_result", "reasoning")
-
-    /** Picks the row for a message. A kind without a dedicated row gets the plain-text fallback. */
-    fun create(message: ChatMessage, context: RowContext): ChatRow {
-        val type = message.raw.get("type")?.asString
-        val kind = message.raw.get(type ?: "say")?.takeIf { it.isJsonPrimitive }?.asString
-        return when {
-            type == "say" && kind in markdownSays -> MarkdownRow(message, context)
-            type == "ask" && kind == "completion_result" -> MarkdownRow(message, context)
-            else -> PlainTextRow(message)
-        }
-    }
+    fun create(item: TranscriptItem, context: RowContext): ChatRow = HtmlRow(item, context)
 }
 
 /**
- * The fallback row: the kind as a small label, then the text, pretty-printed
- * when it is JSON. It never throws, so no message can break the chat.
+ * Every row is HTML drawn by [RowRenderer], which also names the file paths to
+ * link and the answers to offer. The core decides which paths exist, so links
+ * appear a moment after the text.
  */
-class PlainTextRow(message: ChatMessage) : ChatRow {
-    private val label = JBLabel().apply { foreground = UIUtil.getContextHelpForeground(); font = JBUI.Fonts.smallFont() }
-    private val body = JBTextArea().apply {
+class HtmlRow(item: TranscriptItem, private val context: RowContext) : ChatRow {
+    private val pane = JBHtmlPane(JBHtmlPaneStyleConfiguration.builder().build(), JBHtmlPaneConfiguration.builder().build()).apply {
         isEditable = false
-        lineWrap = true
-        wrapStyleWord = true
         isOpaque = false
-        border = JBUI.Borders.empty()
+        border = JBUI.Borders.empty(2, 10)
+        addHyperlinkListener { event -> if (event.eventType == HyperlinkEvent.EventType.ACTIVATED) openLink(event.description ?: event.url?.toString()) }
     }
-    override val component: JComponent = JPanel(BorderLayout()).apply {
-        isOpaque = false
-        border = JBUI.Borders.empty(6, 10)
-        add(label, BorderLayout.NORTH)
-        add(body, BorderLayout.CENTER)
+    private val toggle = JBLabel().apply {
+        border = JBUI.Borders.empty(4, 10)
+        foreground = UIUtil.getContextHelpForeground()
+        cursor = java.awt.Cursor.getPredefinedCursor(java.awt.Cursor.HAND_CURSOR)
+        addMouseListener(object : MouseAdapter() {
+            override fun mouseClicked(e: MouseEvent) {
+                expanded = !expanded
+                layoutParts()
+            }
+        })
     }
+    private val answers = JPanel(FlowLayout(FlowLayout.LEFT, 4, 2)).apply { isOpaque = false }
+    private val panel = JPanel(BorderLayout()).apply { isOpaque = false }
+    override val component: JComponent get() = panel
+
+    private val resolved = HashMap<String, FileLink>()
+    private val asked = HashSet<String>()
+    private var view: RowView = RowRenderer.render(item, context.colors())
+    private var key = item.key
+    private var expanded = false
+    private var lastHtml = ""
 
     init {
-        update(message)
+        draw()
     }
 
-    override fun update(message: ChatMessage) {
-        label.text = kindLabel(message)
-        body.text = prettyText(message.raw.get("text")?.takeIf { it.isJsonPrimitive }?.asString.orEmpty())
-        component.revalidate()
-        component.repaint()
+    override fun update(item: TranscriptItem): Boolean {
+        if (item.key != key) return false
+        view = RowRenderer.render(item, context.colors())
+        draw()
+        return true
     }
 
-    companion object {
-        private val pretty = GsonBuilder().setPrettyPrinting().create()
-
-        fun kindLabel(message: ChatMessage): String {
-            val raw = message.raw
-            val type = raw.get("type")?.asString ?: "say"
-            val kind = raw.get(type)?.takeIf { it.isJsonPrimitive }?.asString ?: "?"
-            return if (raw.get("partial")?.let { it.isJsonPrimitive && it.asBoolean } == true) "$type · $kind · …" else "$type · $kind"
+    private fun draw() {
+        val html = view.html(resolved)
+        if (html != lastHtml) {
+            lastHtml = html
+            pane.text = html
         }
-
-        fun prettyText(text: String): String {
-            val trimmed = text.trim()
-            if (!(trimmed.startsWith("{") || trimmed.startsWith("["))) return text
-            return runCatching { pretty.toJson(JsonParser.parseString(trimmed)) }.getOrDefault(text)
+        answers.removeAll()
+        view.options.forEach { option -> answers.add(JButton(option).apply { addActionListener { context.reply(option) } }) }
+        layoutParts()
+        // Ask the core only about paths not asked about yet; streaming text repeats them.
+        for (reference in view.references) {
+            if (!asked.add(reference)) continue
+            context.fileLinks.resolve(reference).whenComplete { link, _ ->
+                if (link != null) {
+                    ApplicationManager.getApplication().invokeLater({
+                        resolved[reference] = link
+                        draw()
+                    }, ModalityState.any())
+                }
+            }
         }
     }
+
+    private fun layoutParts() {
+        panel.removeAll()
+        val title = view.collapsedTitle
+        if (title != null) {
+            toggle.text = (if (expanded) "▾ " else "▸ ") + title
+            panel.add(toggle, BorderLayout.NORTH)
+        }
+        if (title == null || expanded) panel.add(pane, BorderLayout.CENTER)
+        if (view.options.isNotEmpty()) panel.add(answers, BorderLayout.SOUTH)
+        panel.revalidate()
+        panel.repaint()
+    }
+
+    internal fun openLink(href: String?) {
+        if (href == null) return
+        val reference = MarkdownHtml.referenceOf(href)
+        if (reference != null) {
+            resolved[reference]?.let { context.fileLinks.open(it) }
+        } else if (href.startsWith("http://") || href.startsWith("https://")) {
+            BrowserUtil.browse(href)
+        }
+    }
+
+    /** The HTML now shown, whether or not the row is expanded; for tests. */
+    internal val html: String get() = lastHtml
+
+    internal val isExpanded: Boolean get() = expanded
+
+    internal fun toggle() {
+        expanded = !expanded
+        layoutParts()
+    }
+
+    internal val answerButtons: List<JButton> get() = answers.components.filterIsInstance<JButton>()
 }

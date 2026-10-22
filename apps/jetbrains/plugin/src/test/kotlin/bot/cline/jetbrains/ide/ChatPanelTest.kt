@@ -63,10 +63,10 @@ class ChatPanelTest : BasePlatformTestCase() {
         service.store!!.send("say hello").get()
         val shown = pump { panel.all(JButton::class.java).any { it.text == "Retry" && it.isVisible } }
         assertTrue("no Retry button; buttons=${panel.all(JButton::class.java).map { it.text + ":" + it.isVisible }}", shown)
-        val rows = panel.all(JLabel::class.java).map { it.text.orEmpty() }.filter { it.startsWith("say ·") || it.startsWith("ask ·") }
-        println("ROWS: $rows")
-        assertTrue(rows.toString(), rows.any { it.contains("task") })
-        assertTrue(rows.toString(), rows.any { it.contains("api_req_failed") })
+        val rows = panel.renderedHtml()
+        println("ROWS: " + rows.map { it.replace(Regex("<[^>]+>"), " ").replace(Regex("\\s+"), " ").trim().take(60) })
+        assertTrue(rows.toString(), rows.any { it.contains("Task") && it.contains("say hello") })
+        assertTrue("the failure should show as an error row: $rows", rows.any { it.contains("Error") })
         panel.dispose()
     }
 }

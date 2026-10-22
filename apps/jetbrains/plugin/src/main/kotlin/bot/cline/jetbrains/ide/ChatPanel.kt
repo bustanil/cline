@@ -2,7 +2,10 @@ package bot.cline.jetbrains.ide
 
 import bot.cline.jetbrains.chat.ButtonAction
 import bot.cline.jetbrains.chat.ChatSnapshot
+import bot.cline.jetbrains.chat.ApiMetrics
 import bot.cline.jetbrains.chat.ChatStore
+import bot.cline.jetbrains.chat.Transcript
+import bot.cline.jetbrains.chat.TranscriptItem
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.application.ModalityState
@@ -37,6 +40,7 @@ class ChatPanel(private val project: Project) : JPanel(BorderLayout()), Disposab
         border = JBUI.Borders.empty()
         horizontalScrollBarPolicy = ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER
     }
+    private val metrics = JBLabel().apply { border = JBUI.Borders.empty(2, 10); foreground = com.intellij.util.ui.UIUtil.getContextHelpForeground() }
     private val notice = JBLabel().apply { border = JBUI.Borders.empty(12) }
     private val settingsButton = JButton("Open settings").apply {
         addActionListener { ShowSettingsUtil.getInstance().showSettingsDialog(project, ClineSettingsConfigurable::class.java) }
@@ -74,7 +78,10 @@ class ChatPanel(private val project: Project) : JPanel(BorderLayout()), Disposab
     private object Slot { const val PRIMARY = 1; const val SECONDARY = 2 }
 
     init {
-        val top = JPanel(FlowLayout(FlowLayout.LEFT)).apply { add(notice); add(settingsButton) }
+        val top = JPanel(BorderLayout()).apply {
+            add(JPanel(FlowLayout(FlowLayout.LEFT)).apply { add(notice); add(settingsButton) }, BorderLayout.CENTER)
+            add(metrics, BorderLayout.SOUTH)
+        }
         val buttons = JPanel(FlowLayout(FlowLayout.LEFT)).apply { add(primary); add(secondary) }
         val inputRow = JPanel(BorderLayout(JBUI.scale(6), 0)).apply {
             add(JBScrollPane(input), BorderLayout.CENTER)
@@ -135,26 +142,35 @@ class ChatPanel(private val project: Project) : JPanel(BorderLayout()), Disposab
 
     private fun syncRows(store: ChatStore, snapshot: ChatSnapshot) {
         val atBottom = scroll.verticalScrollBar.let { it.value + it.visibleAmount >= it.maximum - 8 }
-        val present = snapshot.messages.map { it.ts }.toSet()
-        if (rows.keys.any { it !in present } || rows.keys.toList() != snapshot.messages.map { it.ts }.take(rows.size)) {
-            clearRows()
-        }
-        for (message in snapshot.messages) {
-            val existing = rows[message.ts]
+        val items = Transcript.build(snapshot.messages)
+        val keys = items.map { it.key }
+        // Rows only ever grow at the end while a task runs. Anything else (a new task, history) starts over.
+        if (rows.keys.toList() != keys.take(rows.size)) clearRows()
+        val context = RowContext(store.fileLinks, reply = { text -> report(store.send(text)) })
+        for ((index, item) in items.withIndex()) {
+            val existing = rows[item.key]
+            if (existing != null && existing.update(item)) continue
+            val row = ChatRows.create(item, context)
             if (existing != null) {
-                existing.update(message)
+                transcript.remove(index)
+                transcript.add(row.component, index)
             } else {
-                val row = ChatRows.create(message, RowContext(store.fileLinks))
-                rows[message.ts] = row
                 transcript.add(row.component)
             }
+            rows[item.key] = row
         }
+        metrics.text = ApiMetrics.describe(ApiMetrics.of(snapshot.messages))
         transcript.revalidate()
         transcript.repaint()
         if (atBottom) ApplicationManager.getApplication().invokeLater {
             scroll.verticalScrollBar.value = scroll.verticalScrollBar.maximum
         }
     }
+
+    /** The HTML of each row now drawn; for tests. */
+    internal fun renderedHtml(): List<String> = rows.values.filterIsInstance<HtmlRow>().map { it.html }
+
+    internal fun metricsText(): String = metrics.text.orEmpty()
 
     private fun clearRows() {
         rows.clear()
