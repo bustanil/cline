@@ -54,10 +54,12 @@ class RealCoreSmokeTest {
             store.start().get(60, TimeUnit.SECONDS)
             store.newTask("say hello").get(60, TimeUnit.SECONDS)
             val deadline = System.currentTimeMillis() + 60_000
-            while (System.currentTimeMillis() < deadline && store.snapshot.messages.size < 2) Thread.sleep(250)
+            while (System.currentTimeMillis() < deadline && store.buttons().primaryText != "Retry") Thread.sleep(250)
             val kinds = store.snapshot.messages.map { (it.raw.get("type")?.asString ?: "?") + "/" + (it.raw.get("say") ?: it.raw.get("ask")) }
             println("TRANSCRIPT: " + kinds + " turn=" + store.snapshot.turnState?.phase + " userMessages=" + userMessages.map { it.type + ":" + it.text.take(80) })
             assertTrue(store.snapshot.messages.isNotEmpty(), "no messages arrived after newTask")
+            println("BUTTONS: " + store.buttons())
+            assertTrue(store.buttons().primaryText == "Retry", "expected Retry, got " + store.buttons())
             store.stop()
         } finally {
             process.destroy()

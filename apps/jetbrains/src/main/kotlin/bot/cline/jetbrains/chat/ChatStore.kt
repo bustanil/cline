@@ -71,6 +71,51 @@ class ChatStore(private val core: CoreApi) {
 
     fun clearTask(): CompletableFuture<String> = core.call("cline.TaskService", "clearTask")
 
+    /** The footer buttons for the current transcript. */
+    fun buttons(): ButtonConfig {
+        val state = snapshot.extensionState
+        val foreground = state.get("foregroundCommandRunning")?.let { it.isJsonPrimitive && it.asBoolean } == true
+        return ButtonConfigs.forState(snapshot.messages, snapshot.turnState, foreground)
+    }
+
+    /**
+     * Runs what a footer button does, as `executeButtonAction` does in the
+     * webview. [draftText] is what the user typed in the input box, sent along
+     * with an approval, rejection or proceed.
+     */
+    fun perform(action: ButtonAction, draftText: String = ""): CompletableFuture<*> {
+        val text = draftText.trim()
+        return when (action) {
+            ButtonAction.RETRY -> askResponse("yesButtonClicked")
+            ButtonAction.APPROVE, ButtonAction.PROCEED, ButtonAction.REJECT -> {
+                val type = if (action == ButtonAction.REJECT) "noButtonClicked" else "yesButtonClicked"
+                if (text.isEmpty()) askResponse(type) else askResponse(type, text)
+            }
+            ButtonAction.PROCEED_WHILE_RUNNING -> core.call("cline.TaskService", "proceedWhileRunningCommand")
+            ButtonAction.NEW_TASK -> {
+                val last = snapshot.messages.lastOrNull()
+                if (last?.raw?.str("ask") == "new_task") newTask(last.raw.str("text") ?: "") else clearTask()
+            }
+            ButtonAction.CANCEL -> {
+                val background = snapshot.extensionState.get("backgroundCommandRunning")?.let { it.isJsonPrimitive && it.asBoolean } == true
+                if (background) {
+                    core.call("cline.TaskService", "cancelBackgroundCommand").thenCompose { cancelTask() }
+                } else {
+                    cancelTask()
+                }
+            }
+            ButtonAction.UTILITY -> {
+                val last = snapshot.messages.lastOrNull()
+                val value = JsonObject().apply { addProperty("value", last?.raw?.str("text") ?: "") }.toString()
+                when (last?.raw?.str("ask")) {
+                    "condense" -> core.call("cline.SlashService", "condense", value)
+                    "report_bug" -> core.call("cline.SlashService", "reportBug", value)
+                    else -> CompletableFuture.completedFuture("{}")
+                }
+            }
+        }
+    }
+
     private fun onStatePayload(payload: String) {
         val state = runCatching {
             JsonParser.parseString(JsonParser.parseString(payload).asJsonObject.get("stateJson").asString).asJsonObject

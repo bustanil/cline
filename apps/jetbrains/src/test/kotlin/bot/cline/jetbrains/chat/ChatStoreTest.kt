@@ -9,7 +9,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
-private class FakeCore : CoreApi {
+internal class FakeCore : CoreApi {
     val calls = mutableListOf<Triple<String, String, String>>()
     val streams = mutableMapOf<String, (String) -> Unit>()
     val cancelled = mutableListOf<String>()
@@ -93,5 +93,54 @@ class ChatStoreTest {
         store.start().get()
         store.stop()
         assertEquals(2, core.cancelled.size)
+    }
+}
+
+class ChatStoreActionsTest {
+    private fun store(vararg msgs: String, turn: String = "idle", anchor: Long? = null, extra: String = ""): Pair<ChatStore, FakeCore> {
+        val core = FakeCore()
+        val anchorJson = if (anchor != null) ""","anchorTs":$anchor""" else ""
+        val state = """{"epoch":1,"stateVersion":1,"turnState":{"phase":"$turn","seq":1$anchorJson}$extra,"clineMessages":[${msgs.joinToString(",")}]}"""
+        core.latestState = Gson().toJson(mapOf("stateJson" to state))
+        return ChatStore(core).also { it.start().get() } to core
+    }
+
+    @Test
+    fun `approve and reject send yes and no with optional text`() {
+        val (s, c) = store("""{"ts":1,"type":"ask","ask":"tool","epoch":1,"seq":1}""", turn = "awaiting_approval", anchor = 1)
+        assertEquals("Approve", s.buttons().primaryText)
+        s.perform(ButtonAction.APPROVE).get()
+        s.perform(ButtonAction.REJECT, " not that one ").get()
+        val sent = c.calls.filter { it.second == "askResponse" }.map { JsonParser.parseString(it.third).asJsonObject }
+        assertEquals("yesButtonClicked", sent[0].get("responseType").asString)
+        assertEquals("", sent[0].get("text").asString)
+        assertEquals("noButtonClicked", sent[1].get("responseType").asString)
+        assertEquals("not that one", sent[1].get("text").asString)
+    }
+
+    @Test
+    fun `retry sends yes and cancel sends cancelTask`() {
+        val (s, c) = store("""{"ts":1,"type":"ask","ask":"api_req_failed","epoch":1,"seq":1}""", turn = "error", anchor = 1)
+        s.perform(ButtonAction.RETRY).get()
+        s.perform(ButtonAction.CANCEL).get()
+        assertEquals(listOf("askResponse", "cancelTask"), c.calls.drop(1).map { it.second })
+    }
+
+    @Test
+    fun `new task after a new_task ask starts a task with its text and otherwise clears`() {
+        val (s, c) = store("""{"ts":1,"type":"ask","ask":"new_task","text":"carry on","epoch":1,"seq":1}""")
+        s.perform(ButtonAction.NEW_TASK).get()
+        assertEquals("newTask", c.calls.last().second)
+        assertEquals("carry on", JsonParser.parseString(c.calls.last().third).asJsonObject.get("text").asString)
+        val (s2, c2) = store("""{"ts":1,"type":"ask","ask":"completion_result","epoch":1,"seq":1}""")
+        s2.perform(ButtonAction.NEW_TASK).get()
+        assertEquals("clearTask", c2.calls.last().second)
+    }
+
+    @Test
+    fun `cancel with a background command cancels it first`() {
+        val (s, c) = store("""{"ts":1,"type":"say","say":"text","epoch":1,"seq":1}""", turn = "streaming", extra = ""","backgroundCommandRunning":true""")
+        s.perform(ButtonAction.CANCEL).get()
+        assertEquals(listOf("cancelBackgroundCommand", "cancelTask"), c.calls.drop(1).map { it.second })
     }
 }
