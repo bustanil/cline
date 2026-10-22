@@ -23,7 +23,13 @@ fun interface CodeHighlighter {
 }
 
 /** How fenced code blocks look: a box with these colors (`#rrggbb`), and the highlighter for their text. */
-data class CodeBlockStyle(val background: String, val border: String, val highlighter: CodeHighlighter? = null)
+data class CodeBlockStyle(
+    val background: String,
+    val border: String,
+    /** Background of a table's header row, a little different from the card around it. */
+    val tableHeader: String = "#f7f6f4",
+    val highlighter: CodeHighlighter? = null,
+)
 
 /**
  * Markdown to the small HTML subset Swing's HTML pane draws. Inline code that
@@ -134,7 +140,7 @@ object MarkdownHtml {
         val widths = columnWidths(document)
         val text = baseBuilder().build()
         val tables = baseBuilder().attributeProviderFactory {
-            AttributeProvider { node, tag, attributes -> styleTableCell(node, tag, attributes, style?.border ?: "#e3e2e2", widths) }
+            AttributeProvider { node, tag, attributes -> styleTableCell(node, tag, attributes, style?.border ?: "#e3e2e2", style?.tableHeader, widths) }
         }.build()
         val out = mutableListOf<Block>()
         var pending = org.commonmark.node.Document()
@@ -222,7 +228,7 @@ object MarkdownHtml {
     }
 
     // A table inside a card: a bold left-aligned header and thin lines between rows only.
-    private fun styleTableCell(node: Node, tag: String, attributes: MutableMap<String, String>, border: String, widths: java.util.IdentityHashMap<TableCell, Int>) {
+    private fun styleTableCell(node: Node, tag: String, attributes: MutableMap<String, String>, border: String, headerBackground: String?, widths: java.util.IdentityHashMap<TableCell, Int>) {
         when (node) {
             is TableBlock -> {
                 attributes["width"] = "100%"
@@ -236,6 +242,7 @@ object MarkdownHtml {
                 widths[node]?.let { attributes["width"] = "$it%" }
                 val row = node.parent
                 val isLastBodyRow = row is TableRow && row.next == null && row.parent is TableBody
+                if (tag == "th" && headerBackground != null) attributes["bgcolor"] = headerBackground
                 attributes["style"] = (if (isLastBodyRow) "" else "border-bottom: 1px solid $border; ") + if (tag == "th") "font-weight: bold" else ""
             }
         }

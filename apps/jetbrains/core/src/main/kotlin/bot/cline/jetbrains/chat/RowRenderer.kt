@@ -11,6 +11,7 @@ data class RowColors(
     val error: String = "#d03b3b",
     val codeBackground: String = "#f6f5f3",
     val codeBorder: String = "#e3e2e2",
+    val tableHeader: String = "#f7f6f4",
 )
 
 /**
@@ -63,7 +64,7 @@ object RowRenderer {
         }
     }
 
-    private fun codeStyle(c: RowColors, highlighter: CodeHighlighter?) = CodeBlockStyle(c.codeBackground, c.codeBorder, highlighter)
+    private fun codeStyle(c: RowColors, highlighter: CodeHighlighter?) = CodeBlockStyle(c.codeBackground, c.codeBorder, c.tableHeader, highlighter)
 
     private fun markdown(title: String?, m: ChatMessage, c: RowColors, highlighter: CodeHighlighter?): RowView {
         val text = m.text()

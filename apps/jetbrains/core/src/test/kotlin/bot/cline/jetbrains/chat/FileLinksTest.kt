@@ -208,6 +208,14 @@ class MarkdownBlocksTest {
     }
 
     @Test
+    fun `only the header cells get the header background`() {
+        val table = MarkdownHtml.blocks(md, style = CodeBlockStyle("#f6f5f3", "#e3e2e2", "#eeece8")).first { it.kind == MarkdownHtml.BlockKind.TABLE }.html
+        assertEquals(2, Regex("""<th[^>]*bgcolor="#eeece8"""").findAll(table).count(), table)
+        assertEquals(0, Regex("""<td[^>]*bgcolor""").findAll(table).count(), table)
+        assertFalse(MarkdownHtml.blocks(md).first { it.kind == MarkdownHtml.BlockKind.TABLE }.html.contains("bgcolor"))
+    }
+
+    @Test
     fun `links work in text and table blocks`() {
         val html = MarkdownHtml.blocks("`src/a.kt`\n\n| f |\n|---|\n| `src/a.kt` |", mapOf("src/a.kt" to FileLink("/a", null, null)), style).joinToString("") { it.html }
         assertEquals(2, Regex("cline-file:").findAll(html).count(), html)

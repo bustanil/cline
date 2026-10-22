@@ -40,6 +40,8 @@ object ChatColors {
     val terminal: JBColor = JBColor(0xF6F5F3, 0x1F1E1D)
     val codeBackground: JBColor = JBColor(0xF1EFEC, 0x3A3936)
     val codeText: JBColor = JBColor(0x8B3A2B, 0xE0A58F)
+    /** A table's header row: a little different from the white card. */
+    val tableHeader: JBColor = JBColor(0xF7F6F4, 0x3A3936)
 }
 
 /** What rows need from the chat: file links, sending an answer, and theme colors. */
@@ -59,6 +61,7 @@ class RowContext(
             error = ColorUtil.toHtmlColor(JBColor(0xD03B3B, 0xE06C6C)),
             codeBackground = ColorUtil.toHtmlColor(ChatColors.terminal),
             codeBorder = ColorUtil.toHtmlColor(ChatColors.border),
+            tableHeader = ColorUtil.toHtmlColor(ChatColors.tableHeader),
         )
     }
 }
@@ -154,8 +157,9 @@ class HtmlRow(item: TranscriptItem, private val context: RowContext) : ChatRow {
             else -> JPanel(BorderLayout()).apply {
                 isOpaque = true
                 background = if (kind == MarkdownHtml.BlockKind.CODE) ChatColors.terminal else ChatColors.card
-                border = BorderFactory.createCompoundBorder(JBUI.Borders.empty(4, 10), RoundedLineBorder(ChatColors.border, 12))
-                add(pane.apply { border = JBUI.Borders.empty(if (kind == MarkdownHtml.BlockKind.CODE) 8 else 4, 10) }, BorderLayout.CENTER)
+                border = BorderFactory.createCompoundBorder(JBUI.Borders.empty(4, 10), RoundedLineBorder(ChatColors.border, if (kind == MarkdownHtml.BlockKind.CODE) 12 else 6))
+                // A table's header row runs to the card's edge; code keeps some padding.
+                add(pane.apply { border = if (kind == MarkdownHtml.BlockKind.CODE) JBUI.Borders.empty(8, 10) else JBUI.Borders.empty(1) }, BorderLayout.CENTER)
             }
         }
         var html = ""
