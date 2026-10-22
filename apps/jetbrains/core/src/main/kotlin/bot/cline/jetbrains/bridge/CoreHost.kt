@@ -27,6 +27,8 @@ data class CoreLaunch(
     val maxRestartDelayMs: Long = 30_000,
     /** A connection that lasts this long resets the restart delay. */
     val stableAfterMs: Long = 30_000,
+    /** Receives one line for each start, exit and restart, so the cause of a restart can be read later. */
+    val log: (String) -> Unit = {},
 )
 
 /**
@@ -75,6 +77,7 @@ class CoreHost(private val launch: CoreLaunch) : AutoCloseable {
     private fun spawn() {
         if (stopped) return
         starts++
+        launch.log("Cline core: starting (start #$starts)")
         val token = secret()
         val srv = CoreConnectionServer(token, launch.ide) { conn -> handleConnected(conn) }.start()
         server = srv
@@ -90,9 +93,11 @@ class CoreHost(private val launch: CoreLaunch) : AutoCloseable {
                 launch.dataDir?.let { put("CLINE_DIR", it.path) }
             }
             val started = builder.start()
+            launch.log("Cline core: started pid ${started.pid()} on bridge port ${srv.port}")
             process = started
             started.onExit().thenRun { handleExit(started) }
         } catch (e: Exception) {
+            launch.log("Cline core: could not start (${e.message}); retrying")
             srv.stop()
             server = null
             scheduleRestart()
@@ -111,6 +116,7 @@ class CoreHost(private val launch: CoreLaunch) : AutoCloseable {
     private fun handleExit(exited: Process) {
         synchronized(this) {
             if (process !== exited) return
+            launch.log("Cline core: process ${exited.pid()} exited with code ${exited.exitValue()} without being stopped; restarting")
             process = null
             server?.stop()
             server = null
@@ -135,6 +141,7 @@ class CoreHost(private val launch: CoreLaunch) : AutoCloseable {
 
     @Synchronized
     fun stop() {
+        launch.log("Cline core: stopping on request")
         stopped = true
         restart?.cancel(false)
         process?.let { p ->

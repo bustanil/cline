@@ -133,6 +133,7 @@ class ClineProjectService(private val project: Project) : Disposable {
                 ide = bridge,
                 env = env,
                 logFile = File(PathManager.getLogPath(), "cline-core.log"),
+                log = { LOG.info("[${project.name}] $it") },
             ),
         )
         created.onConnected { connection ->
@@ -159,6 +160,7 @@ class ClineProjectService(private val project: Project) : Disposable {
     /** Stops the core and starts it again, for example after changing the settings. */
     @Synchronized
     fun restart() {
+        LOG.info("Cline: restarting the core for ${project.name} (settings changed)")
         host?.close()
         host = null
         store = null
@@ -175,6 +177,7 @@ class ClineProjectService(private val project: Project) : Disposable {
 
     @Synchronized
     override fun dispose() {
+        LOG.info("Cline: disposing the service for ${project.name}")
         host?.close()
         host = null
         // A store from the closed connection must not be handed out again if the service starts anew.
