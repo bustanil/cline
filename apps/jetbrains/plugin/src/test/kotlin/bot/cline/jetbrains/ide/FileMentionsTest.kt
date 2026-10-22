@@ -14,7 +14,7 @@ class FileMentionsTest : BasePlatformTestCase() {
         val doc = myFixture.editor.document
         myFixture.editor.caretModel.moveToOffset(doc.getLineStartOffset(2))
         val pointer = FileMentions.pointer(project, myFixture.editor)!!
-        assertTrue(pointer, pointer.matches(Regex("@/.*Pointer\\.java:3 ")))
+        assertTrue(pointer, pointer.matches(Regex("@/.*Pointer\\.java \\(line 3\\) ")))
     }
 
     fun `test the actions are registered`() {

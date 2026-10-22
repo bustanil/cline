@@ -97,11 +97,11 @@ object FileMentions {
         return bot.cline.jetbrains.chat.MentionMatch(relative, file.isDirectory, null).text()
     }
 
-    /** `@/src/a.kt:12` for the caret's line (1-based). */
+    /** `@/src/a.kt (line 12)` for the caret's line (1-based). The core only resolves a bare path after `@`, so the line stays outside the mention. */
     fun pointer(project: Project, editor: Editor): String? {
         val file = com.intellij.openapi.fileEditor.FileDocumentManager.getInstance().getFile(editor.document) ?: return null
         val relative = relativePath(project, file) ?: return null
-        return "@/$relative:${editor.caretModel.logicalPosition.line + 1} "
+        return "@/$relative (line ${editor.caretModel.logicalPosition.line + 1}) "
     }
 
     private fun relativePath(project: Project, file: com.intellij.openapi.vfs.VirtualFile): String? {
