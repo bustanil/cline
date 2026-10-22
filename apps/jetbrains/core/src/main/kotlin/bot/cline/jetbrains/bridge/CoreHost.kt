@@ -17,6 +17,8 @@ data class CoreLaunch(
     val coreJs: File,
     /** Data folder; null uses the shared `~/.cline`. */
     val dataDir: File? = null,
+    /** The folder the core runs in, so anything it does relative to its cwd lands in the open project. */
+    val workingDir: File? = null,
     val ide: IdeBridge = object : IdeBridge {},
     /** Extra environment for the core, such as `NODE_PATH` for native modules. */
     val env: Map<String, String> = emptyMap(),
@@ -83,6 +85,7 @@ class CoreHost(private val launch: CoreLaunch) : AutoCloseable {
         server = srv
         try {
             val builder = ProcessBuilder(launch.node, launch.coreJs.path).redirectErrorStream(true)
+            launch.workingDir?.takeIf { it.isDirectory }?.let { builder.directory(it) }
             launch.logFile?.let { builder.redirectOutput(ProcessBuilder.Redirect.appendTo(it)) }
                 ?: builder.redirectOutput(ProcessBuilder.Redirect.DISCARD)
             builder.environment().apply {

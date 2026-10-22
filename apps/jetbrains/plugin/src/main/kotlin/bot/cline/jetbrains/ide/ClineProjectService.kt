@@ -133,6 +133,7 @@ class ClineProjectService(private val project: Project) : Disposable {
                 node = node,
                 coreJs = coreJs,
                 dataDir = settings.dataDir.takeIf { it.isNotBlank() }?.let(::File),
+                workingDir = project.basePath?.let(::File),
                 ide = bridge,
                 env = env,
                 logFile = File(PathManager.getLogPath(), "cline-core.log"),

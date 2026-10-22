@@ -57,8 +57,14 @@ class IntelliJBridgeTest : BasePlatformTestCase() {
         }
     }
 
-    fun `test workspace paths are the content roots`() {
-        assertTrue(bridge().workspacePaths().isNotEmpty())
+    fun `test the project directory comes first in the workspace paths`() {
+        val paths = bridge().workspacePaths()
+        val base = project.basePath
+        assertNotNull(base)
+        // The core takes the first path as the workspace root; the module content roots come after it.
+        assertEquals(base, paths.first())
+        assertEquals(paths.distinct(), paths)
+        paths.drop(1).forEach { assertTrue(it, it.startsWith(base!!) || !it.startsWith(base)) }
     }
 
     fun `test the diff chain has one request per file`() {

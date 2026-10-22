@@ -36,8 +36,14 @@ import java.util.concurrent.atomic.AtomicReference
  * it gets its reply.
  */
 class IntelliJBridge(private val project: Project) : IdeBridge {
+    /**
+     * The core takes the first path as the workspace root: it is the folder the agent believes it sits in, the cwd
+     * its commands run in and the name in its prompt. A Gradle project's content roots are its module folders, so
+     * the project's own directory has to come first or the agent reports a module as the workspace.
+     */
     override fun workspacePaths(): List<String> = runReadAction {
-        ProjectRootManager.getInstance(project).contentRoots.map { it.path }.ifEmpty { listOfNotNull(project.basePath) }
+        val roots = ProjectRootManager.getInstance(project).contentRoots.map { it.path }
+        listOfNotNull(project.basePath).plus(roots).distinct()
     }
 
     override fun hostVersion(): Pair<String, String> =
