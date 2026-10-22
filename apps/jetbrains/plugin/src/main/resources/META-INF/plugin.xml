@@ -6,7 +6,7 @@
     <depends>com.intellij.modules.platform</depends>
 
     <extensions defaultExtensionNs="com.intellij">
-        <toolWindow id="Cline" anchor="right" factoryClass="bot.cline.jetbrains.ide.ClineToolWindowFactory"/>
+        <toolWindow id="Cline" anchor="right" icon="/icons/cline.svg" factoryClass="bot.cline.jetbrains.ide.ClineToolWindowFactory"/>
         <applicationConfigurable parentId="tools" instance="bot.cline.jetbrains.ide.ClineSettingsConfigurable"
                                  id="bot.cline.jetbrains.settings" displayName="Cline"/>
         <notificationGroup id="Cline" displayType="BALLOON"/>
@@ -18,6 +18,12 @@
     </extensions>
 
     <actions>
+        <action id="Cline.OpenToolWindow" class="bot.cline.jetbrains.ide.OpenClineAction" text="Open Cline"
+                description="Open or close the Cline tool window" icon="/icons/cline.svg">
+            <add-to-group group-id="MainToolbarRight" anchor="first"/>
+            <add-to-group group-id="ToolsMenu" anchor="first"/>
+        </action>
+
         <group id="Cline.EditorActions" text="Cline" popup="true" icon="AllIcons.Actions.Lightning">
             <action id="Cline.AddToChat" class="bot.cline.jetbrains.ide.AddToClineAction" text="Add to Cline"
                     description="Add the selected code to the Cline chat">

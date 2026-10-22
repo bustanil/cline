@@ -81,6 +81,22 @@ class EditorActionsTest : BasePlatformTestCase() {
         assertEquals("Fix with Cline", intention.text)
     }
 
+    fun `test the tool window has an icon and the toolbar has an Open Cline button`() {
+        val manager = ActionManager.getInstance()
+        val open = manager.getAction("Cline.OpenToolWindow")
+        assertNotNull(open)
+        assertNotNull("the action needs an icon to show in the toolbar", open.templatePresentation.icon)
+        for (groupId in listOf("MainToolbarRight", "ToolsMenu")) {
+            val group = manager.getAction(groupId) as com.intellij.openapi.actionSystem.ActionGroup
+            assertTrue("$groupId should hold Open Cline", group.getChildren(null).any { it === open })
+        }
+        assertNotNull("the icon file ships with the plugin", javaClass.getResource("/icons/cline.svg"))
+        assertNotNull(javaClass.getResource("/icons/cline_dark.svg"))
+        val window = com.intellij.openapi.wm.ToolWindowManager.getInstance(project).getToolWindow("Cline")
+        // The light fixture may not create tool windows; when it does, it must have an icon.
+        if (window != null) assertNotNull(window.icon)
+    }
+
     fun `test the actions are registered and the editor menu group exists`() {
         val manager = ActionManager.getInstance()
         for (id in listOf("Cline.AddToChat", "Cline.Fix", "Cline.Explain", "Cline.Improve", "Cline.EditorActions")) assertNotNull(id, manager.getAction(id))
