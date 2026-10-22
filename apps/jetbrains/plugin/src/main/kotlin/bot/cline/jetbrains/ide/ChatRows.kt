@@ -38,8 +38,11 @@ object ChatColors {
     val card: JBColor = JBColor(0xFFFFFF, 0x30302E)
     val border: JBColor = JBColor(0xE3E2E2, 0x45443F)
     val terminal: JBColor = JBColor(0xFFFFFF, 0x1F1E1D)
-    val codeBackground: JBColor = JBColor(0xF1EFEC, 0x3A3936)
-    val codeText: JBColor = JBColor(0x8B3A2B, 0xE0A58F)
+    val codeBackground: JBColor = JBColor(0xF8F7F5, 0x34332F)
+    val codeText: JBColor = JBColor(0x5E4D47, 0xCDBDB4)
+
+    /** The CSS rule for inline code (`like this`). */
+    fun inlineCodeRule(): String = "code { background-color: ${ColorUtil.toHtmlColor(codeBackground)}; color: ${ColorUtil.toHtmlColor(codeText)}; font-size: 95%; }"
     /** What the user wrote: a bubble a little darker than the page. */
     val bubble: JBColor = JBColor(0xF0EFEE, 0x3A3936)
 
@@ -57,6 +60,8 @@ class RowContext(
     val highlighter: bot.cline.jetbrains.chat.CodeHighlighter? = null,
     /** Background of a code card. */
     val codeBackground: java.awt.Color = ChatColors.terminal,
+    /** CSS rule for inline code. */
+    val inlineCodeRule: String = ChatColors.inlineCodeRule(),
 ) {
     companion object {
         fun themeColors() = RowColors(
@@ -87,13 +92,13 @@ object ChatRows {
 }
 
 /** An HTML pane that draws row content and passes link clicks to [onLink]. */
-internal fun newHtmlPane(onLink: (String?) -> Unit): JBHtmlPane =
+internal fun newHtmlPane(inlineCodeRule: String = ChatColors.inlineCodeRule(), onLink: (String?) -> Unit): JBHtmlPane =
     JBHtmlPane(JBHtmlPaneStyleConfiguration.builder().build(), JBHtmlPaneConfiguration.builder().build()).apply {
         isEditable = false
         isOpaque = false
         border = JBUI.Borders.empty(2, 10)
         // Tight lists: the default gives each bullet the gap of a paragraph.
-        (editorKit as? javax.swing.text.html.HTMLEditorKit)?.styleSheet?.addRule("code { background-color: ${ColorUtil.toHtmlColor(ChatColors.codeBackground)}; color: ${ColorUtil.toHtmlColor(ChatColors.codeText)}; }")
+        (editorKit as? javax.swing.text.html.HTMLEditorKit)?.styleSheet?.addRule(inlineCodeRule)
         (editorKit as? javax.swing.text.html.HTMLEditorKit)?.styleSheet?.addRule("li { margin-top: 0px; margin-bottom: 0px; } ul { margin-top: 2px; margin-bottom: 2px; } ol { margin-top: 2px; margin-bottom: 2px; }")
         addHyperlinkListener { event -> if (event.eventType == HyperlinkEvent.EventType.ACTIVATED) onLink(event.description ?: event.url?.toString()) }
     }
@@ -115,7 +120,7 @@ internal fun openChatLink(href: String?, resolved: Map<String, FileLink>, contex
  * appear a moment after the text.
  */
 class HtmlRow(item: TranscriptItem, private val context: RowContext) : ChatRow {
-    private val pane = newHtmlPane { href -> openLink(href) }
+    private val pane = newHtmlPane(context.inlineCodeRule) { href -> openLink(href) }
     private val blockPanel = JPanel().apply {
         layout = javax.swing.BoxLayout(this, javax.swing.BoxLayout.Y_AXIS)
         isOpaque = false
@@ -156,7 +161,7 @@ class HtmlRow(item: TranscriptItem, private val context: RowContext) : ChatRow {
 
     /** One block of a Markdown reply: plain text, or a code block or table in a card of its own. */
     private inner class BlockView(var kind: MarkdownHtml.BlockKind) {
-        val pane: JBHtmlPane = newHtmlPane { href -> openLink(href) }
+        val pane: JBHtmlPane = newHtmlPane(context.inlineCodeRule) { href -> openLink(href) }
         val component: JComponent = when (kind) {
             MarkdownHtml.BlockKind.TEXT -> pane
             else -> JPanel(BorderLayout()).apply {

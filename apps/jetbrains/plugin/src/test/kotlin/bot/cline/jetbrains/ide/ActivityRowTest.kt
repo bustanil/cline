@@ -187,6 +187,20 @@ class ActivityRowTest : BasePlatformTestCase() {
         paint(convo, "conversation")
     }
 
+    fun `test inline code style previews`() {
+        val text = "- `FakeAcquirer` (`routing.infrastructure.fakeacquirer`) — implements **both** `PurchaseAcquirer` and `AuthCaptureAcquirer`, so it advertises both flows. Each interface method is one REST call through `FakeAcquirerClient`, adapted into an `AcquirerResult` by a shared `call(...)` helper that wraps any `RuntimeException` into `AcquirerUnavailableException` (message deliberately contains no card data).\n- **Test doubles** — `DefaultAcquirerRouterTest.AuthCaptureOnly` and `ScriptedAcquirer`."
+        val message = ChatMessage(JsonObject().apply { addProperty("ts", 5); addProperty("type", "say"); addProperty("say", "text"); addProperty("text", text) })
+        val styles = listOf(
+            "current" to ChatColors.inlineCodeRule(),
+            "1-quiet-tint" to "code { background-color: #F4F3F0; color: #2B2B2A; }",
+            "2-muted-text" to "code { color: #8A6F65; }",
+            "3-whisper" to "code { background-color: #F8F7F5; color: #5E4D47; font-size: 95%; }",
+        )
+        for ((name, rule) in styles) {
+            paint(HtmlRow(TranscriptItem.Single(message), RowContext(FileLinks(Core()), inlineCodeRule = rule)).component, "preview-inline-$name")
+        }
+    }
+
     fun `test code background previews`() {
         val message = ChatMessage(JsonObject().apply { addProperty("ts", 9); addProperty("type", "say"); addProperty("say", "text"); addProperty("text", javaReply) })
         for ((name, color) in listOf("lighter" to java.awt.Color(0xF9F8F6), "white" to java.awt.Color(0xFFFFFF), "current" to java.awt.Color(0xF6F5F3))) {
