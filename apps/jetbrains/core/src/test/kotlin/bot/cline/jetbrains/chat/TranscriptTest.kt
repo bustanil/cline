@@ -233,10 +233,17 @@ class HoldUnfinishedTest {
     }
 
     @Test
-    fun `a finished answer, a later row or an ended turn shows it`() {
+    fun `a finished answer or a later row shows it`() {
         assertEquals(2, Transcript.holdUnfinished(rows(say(1, "task"), say(2, "text")), "streaming").size)
         assertEquals(3, Transcript.holdUnfinished(rows(say(1, "task"), say(2, "text", partial = true), say(3, "tool")), "streaming").size)
-        assertEquals(2, Transcript.holdUnfinished(rows(say(1, "task"), say(2, "text", partial = true)), "idle").size)
+    }
+
+    @Test
+    fun `an answer cut short by a stopped turn is not shown`() {
+        val cut = rows(say(1, "task"), say(2, "text", partial = true), say(3, "tool", partial = true))
+        assertEquals(listOf(1L, 3L), Transcript.holdUnfinished(cut, "resumable").map { it.key })
+        assertEquals(listOf(1L, 3L), Transcript.holdUnfinished(cut, "idle").map { it.key })
+        assertEquals(1, Transcript.holdUnfinished(rows(say(1, "task"), say(2, "completion_result", partial = true)), "error").size)
     }
 
     @Test

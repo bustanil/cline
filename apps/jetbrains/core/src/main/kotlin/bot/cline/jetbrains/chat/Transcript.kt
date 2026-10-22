@@ -44,11 +44,14 @@ object Transcript {
      * streaming turn can be unfinished, and only text and completion rows are held; a tool row shows at once.
      */
     fun holdUnfinished(items: List<TranscriptItem>, turnPhase: String?): List<TranscriptItem> {
+        // A turn that stopped (cancelled, failed) leaves the answer it was writing cut short; that is not shown.
+        if (turnPhase != null && turnPhase != "streaming") return items.filterNot { it is TranscriptItem.Single && isUnfinishedAnswer(it.message) }
         val last = items.lastOrNull() as? TranscriptItem.Single ?: return items
-        val partial = last.message.raw.get("partial")?.let { it.isJsonPrimitive && it.asBoolean } == true
-        val text = last.message.isSay("text") || last.message.isSay("completion_result")
-        return if (turnPhase == "streaming" && partial && text) items.dropLast(1) else items
+        return if (isUnfinishedAnswer(last.message)) items.dropLast(1) else items
     }
+
+    private fun isUnfinishedAnswer(m: ChatMessage): Boolean =
+        (m.isSay("text") || m.isSay("completion_result")) && m.raw.get("partial")?.let { it.isJsonPrimitive && it.asBoolean } == true
 
     /** Merges each `api_req_started` with the `api_req_finished` after it, and drops the finished rows. */
     fun combineApiRequests(messages: List<ChatMessage>): List<ChatMessage> {

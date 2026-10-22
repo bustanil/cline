@@ -45,4 +45,14 @@ class ProtoMessageConverterTest {
         val m = convert("""{"ts":"1","type":"SAY","conversationHistoryDeletedRange":{"startIndex":2,"endIndex":5}}""")
         assertEquals("[2,5]", m.get("conversationHistoryDeletedRange").toString())
     }
+
+    @Test
+    fun `enums sent as numbers convert like their names`() {
+        assertEquals("text", convert("""{"ts":"1","type":1,"say":4}""").get("say").asString)
+        assertEquals("command", convert("""{"ts":"1","type":"SAY","say":"10"}""").get("say").asString)
+        assertEquals("tool", convert("""{"ts":"1","type":1,"say":12}""").get("say").asString)
+        val ask = convert("""{"ts":"1","type":0,"ask":5}""")
+        assertEquals("ask", ask.get("type").asString)
+        assertEquals("tool", ask.get("ask").asString)
+    }
 }

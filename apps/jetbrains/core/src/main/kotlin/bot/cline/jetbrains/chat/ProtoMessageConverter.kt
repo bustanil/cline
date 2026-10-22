@@ -77,16 +77,79 @@ object ProtoMessageConverter {
         "COMPACTION" to "compaction",
     )
 
+    // Some paths send an enum as its number (the proto3 JSON default for a client that asks for numbers), so both forms are read.
+    private val askNumbers = mapOf(
+        0 to "FOLLOWUP",
+        1 to "PLAN_MODE_RESPOND",
+        2 to "COMMAND",
+        3 to "COMMAND_OUTPUT",
+        4 to "COMPLETION_RESULT",
+        5 to "TOOL",
+        6 to "API_REQ_FAILED",
+        7 to "RESUME_TASK",
+        8 to "RESUME_COMPLETED_TASK",
+        9 to "MISTAKE_LIMIT_REACHED",
+        10 to "BROWSER_ACTION_LAUNCH",
+        11 to "USE_MCP_SERVER",
+        12 to "NEW_TASK",
+        13 to "CONDENSE",
+        14 to "REPORT_BUG",
+        15 to "SUMMARIZE_TASK",
+        16 to "ACT_MODE_RESPOND",
+        17 to "USE_SUBAGENTS",
+    )
+
+    private val sayNumbers = mapOf(
+        0 to "TASK",
+        1 to "ERROR",
+        2 to "API_REQ_STARTED",
+        3 to "API_REQ_FINISHED",
+        4 to "TEXT",
+        5 to "REASONING",
+        6 to "COMPLETION_RESULT_SAY",
+        7 to "USER_FEEDBACK",
+        8 to "USER_FEEDBACK_DIFF",
+        10 to "COMMAND_SAY",
+        11 to "COMMAND_OUTPUT_SAY",
+        12 to "TOOL_SAY",
+        13 to "SHELL_INTEGRATION_WARNING",
+        14 to "BROWSER_ACTION_LAUNCH_SAY",
+        15 to "BROWSER_ACTION",
+        16 to "BROWSER_ACTION_RESULT",
+        17 to "MCP_SERVER_REQUEST_STARTED",
+        18 to "MCP_SERVER_RESPONSE",
+        19 to "MCP_NOTIFICATION",
+        20 to "USE_MCP_SERVER_SAY",
+        21 to "DIFF_ERROR",
+        22 to "DELETED_API_REQS",
+        23 to "CLINEIGNORE_ERROR",
+        24 to "CHECKPOINT_CREATED",
+        25 to "LOAD_MCP_DOCUMENTATION",
+        26 to "INFO",
+        30 to "HOOK_STATUS",
+        31 to "HOOK_OUTPUT_STREAM",
+        32 to "COMMAND_PERMISSION_DENIED",
+        33 to "CONDITIONAL_RULES_APPLIED",
+        34 to "SUBAGENT_STATUS",
+        35 to "USE_SUBAGENTS_SAY",
+        36 to "SUBAGENT_USAGE",
+        37 to "COMPACTION",
+        38 to "PLAN_COMPLETION_RESULT",
+    )
+
+    private fun JsonObject.enumName(field: String, numbers: Map<Int, String>): String? =
+        string(field)?.let { raw -> raw.toIntOrNull()?.let { numbers[it] } ?: raw }
+
     fun convert(proto: JsonObject): JsonObject {
         val out = JsonObject()
         out.add("ts", proto.get("ts") ?: return out)
-        val isAsk = (proto.string("type") ?: "ASK") == "ASK" // ASK is enum value 0, the proto3 default
+        val isAsk = (proto.string("type") ?: "ASK").let { it == "ASK" || it == "0" } // ASK is enum value 0, the proto3 default
         out.addProperty("type", if (isAsk) "ask" else "say")
         if (isAsk) {
-            val raw = proto.string("ask") ?: DEFAULT_ASK
+            val raw = proto.enumName("ask", askNumbers) ?: DEFAULT_ASK
             out.addProperty("ask", askNames[raw] ?: raw.lowercase())
         } else {
-            val raw = proto.string("say") ?: DEFAULT_SAY
+            val raw = proto.enumName("say", sayNumbers) ?: DEFAULT_SAY
             out.addProperty("say", sayNames[raw] ?: raw.lowercase())
         }
         for (field in listOf("text", "reasoning", "lastCheckpointHash")) {
