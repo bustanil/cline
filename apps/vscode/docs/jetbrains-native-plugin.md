@@ -58,7 +58,7 @@ Facts this work established, which the sections below did not know:
 
 Not done, and not verified:
 
-- **Run with Node 22.15.0.** The tests ran on Node 24 against a core whose `better-sqlite3` resolves from the source checkout. The bundled core, with its Node 22 binaries, was found and its wrong-Node guard was tested. Starting it on Node 22 was not run, because Node 22 was not installed on the build machine.
+- **Checked on Node 22.15.0:** with the official macOS arm64 build (checksum verified), the core bundled in the plugin starts, takes its `better-sqlite3` from `binaries/darwin-arm64` through `NODE_PATH`, and connects (`CoreLocatorTest`, run with `CLINE_NODE` set to that Node). The other platforms' binaries were not run. The remaining tests run on Node 24 against a core whose `better-sqlite3` resolves from the source checkout.
 - **A task that finishes.** No model credential was available, so no test ran an agent turn to completion. Tool approvals, diffs and the changed-files list are tested with fake data and with the real core's empty answers, not with a real edit.
 - **Not ported:** attaching images and files, editing an earlier message (`editMessageAndRegenerate`), browser sessions, MCP, subagents, worktrees, cloud sessions, rules and workflows screens, and a proper settings screen for providers beyond the key and model. These messages draw as plain text. The input has no image paste.
 - **Runtime checks that need a person:** how the tool window looks in light and dark themes, the `@` popup position, and the diff window opened from the editor. The tests cover the logic and the component trees, not the pixels. `plugin.zip` was built but not loaded in a running IDE.
