@@ -133,6 +133,12 @@ import {
 	refreshDesktopFeatureFlags,
 } from "./feature-flags";
 import { getHubStatus, restartHub } from "./hub-admin";
+import { isHubIndependentCommand } from "./hub-startup";
+import {
+	readKeybindings,
+	resolveKeybindingsPath,
+	writeKeybindings,
+} from "./keybindings";
 import { clearLegacyProviderCredentials } from "./legacy-provider-credentials";
 import {
 	installMarketplaceEntryForDesktopCommand,
@@ -1877,6 +1883,20 @@ export async function handleCommand(
 	args?: Record<string, unknown>,
 	options?: { connection?: SidecarWebSocketClient },
 ): Promise<unknown> {
+	if (command === "retry_hub") {
+		ctx.hubStartup?.start();
+		return ctx.hubStartup?.status ?? null;
+	}
+	// The transport is published before the Hub is ready. Hold Hub-backed
+	// commands until startup settles, as they waited for the transport before.
+	if (ctx.hubStartup && !isHubIndependentCommand(command)) {
+		await ctx.hubStartup.waitUntilSettled();
+		// Its close cleanup already ran, so nothing could cancel work (such as a
+		// browser sign-in) started for a connection that left while waiting.
+		if (options?.connection && !ctx.wsClients.has(options.connection)) {
+			throw new Error("The connection closed while Cline Hub was starting.");
+		}
+	}
 	const explicitEnvironment = requestedEnvironmentId(args);
 	if (explicitEnvironment) {
 		ctx = getEnvironmentContext(ctx, explicitEnvironment);
@@ -2812,6 +2832,16 @@ export async function handleCommand(
 			accountService,
 		);
 		if (operation === "switchAccount") {
+			if (isCloudAgentsEnabled()) {
+				try {
+					await getCloudSessionManager(ctx).refreshOrganization();
+				} catch (error) {
+					ctx.logger?.error?.(
+						"Failed to refresh cloud organization after account switch",
+						{ error },
+					);
+				}
+			}
 			await resetCloudSessionManager(ctx);
 			// The sidebar must re-scope immediately (personal ⇄ org), not on
 			// the next 12s poll.
@@ -3221,6 +3251,25 @@ export async function handleCommand(
 		}
 		setAutoUpdateEnabledGlobally(args.auto_update_enabled);
 		return readGlobalSettings();
+	}
+	if (command === "get_keybindings") {
+		return readKeybindings();
+	}
+	if (command === "set_keybindings") {
+		const saved = writeKeybindings(args?.keybindings);
+		broadcastEvent(ctx, "keybindings_changed", saved);
+		return saved;
+	}
+	if (command === "open_keybindings_file") {
+		// Create the file when missing so there is something to edit, but never
+		// rewrite an existing one: a malformed file reads as empty bindings and
+		// writing that back would wipe what the user is opening it to fix.
+		const filePath = resolveKeybindingsPath();
+		if (!existsSync(filePath)) {
+			writeKeybindings(readKeybindings());
+		}
+		openFileInEditor(filePath);
+		return { path: filePath };
 	}
 	if (command === "export_diagnostics") {
 		const sessionIds = Array.isArray(args?.sessionIds)
